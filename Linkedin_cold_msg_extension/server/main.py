@@ -7,11 +7,10 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from xml.etree import ElementTree
 
-DEFAULT_MODEL_NAME = "gpt-4.1"
+DEFAULT_MODEL_NAME = "gpt-4o-2024-08-06"
 MODEL_NAME = os.getenv("OPENAI_MODEL", DEFAULT_MODEL_NAME)
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_API_URL = "https://api.openai.com/v1/responses"
 
 FALLBACK_PROOF_POINTS = [
     "Built production-grade pipelines on European accounting data at Chanel; automated data-quality checks in pandas",
@@ -21,6 +20,41 @@ FALLBACK_PROOF_POINTS = [
     "Daily stack: Python, pandas, SQL; ML foundations; dashboards and decision-support",
     "Based in NYC; targeting Summer 2026 analytics/product/data internship",
 ]
+
+RESPONSE_SCHEMA = {
+    "type": "json_schema",
+    "name": "connection_notes",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "variants": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {
+                            "type": "string",
+                            "enum": ["short", "direct", "warm"],
+                        },
+                        "text": {
+                            "type": "string",
+                        },
+                        "char_count": {
+                            "type": "integer",
+                        },
+                    },
+                    "required": ["label", "text", "char_count"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["variants"],
+        "additionalProperties": False,
+    },
+}
 
 app = FastAPI()
 app.add_middleware(
@@ -216,16 +250,14 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
 
     system = (
         "You write sharp, non-generic LinkedIn connection notes. "
-        "Return strict XML only (no markdown, no prose). "
-        "The output must start with <response> and end with </response>. "
-        "Use CDATA for text fields. "
+        "Return strict JSON only (no markdown, no prose). "
         "Do NOT fabricate details. Use only the provided my_profile, target_profile, hooks, and ranked lists. "
         "Write exactly 3 variants labeled short, direct, warm. "
         "Each variant must be <= 300 characters (hard limit). "
         "Each variant must contain exactly one hook, exactly one credibility proof point from my_profile.proof_points, "
         "and end with a soft CTA. "
         "Each message must include a clear rationale for reaching out and avoid generic praise. "
-        "Never refuse or explain constraints; always produce XML."
+        "Never refuse or explain constraints; always produce JSON."
     )
 
     hook_rank_lines = [
@@ -271,7 +303,7 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
             f"BANLIST: {', '.join(banlist)}",
             "",
             "RULES:",
-            "- Output strict XML only. No explanations.",
+            "- Output strict JSON only. No explanations.",
             "- 3 variants: short, direct, warm.",
             "- <= 300 characters each.",
             "- Each variant must include exactly ONE hook (prefer highest-scoring; diversify across variants).",
@@ -282,12 +314,14 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
             "CONTENT_PLAN:",
             "[Hook] + [Credibility] + [CTA]",
             "",
-            "OUTPUT_XML_SCHEMA:",
-            "<response>",
-            "  <variant><label>short</label><text><![CDATA[...]]></text></variant>",
-            "  <variant><label>direct</label><text><![CDATA[...]]></text></variant>",
-            "  <variant><label>warm</label><text><![CDATA[...]]></text></variant>",
-            "</response>",
+            "OUTPUT_JSON_SCHEMA (shape):",
+            "{",
+            "  \"variants\": [",
+            "    {\"label\": \"short\", \"text\": \"...\", \"char_count\": 123},",
+            "    {\"label\": \"direct\", \"text\": \"...\", \"char_count\": 140},",
+            "    {\"label\": \"warm\", \"text\": \"...\", \"char_count\": 155}",
+            "  ]",
+            "}",
         ]
     )
 
@@ -314,74 +348,40 @@ def normalize_variants(raw: dict[str, Any]) -> list[Variant]:
     return variants
 
 
-def extract_xml_block(content: str) -> str | None:
-    fence = re.search(r"```(?:xml)?\s*([\s\S]*?)```", content, re.IGNORECASE)
+def parse_json_content(content: str) -> dict[str, Any] | None:
+    if not content:
+        return None
+    candidate = content.strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", candidate, re.IGNORECASE)
     if fence:
         candidate = fence.group(1).strip()
-        if "<response" in candidate.lower():
-            return candidate
-
-    match = re.search(r"<response[\s\S]*?</response>", content, re.IGNORECASE)
-    if match:
-        return match.group(0)
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(candidate[start : end + 1])
+            except json.JSONDecodeError:
+                return None
     return None
 
 
-def sanitize_xml(xml_text: str) -> str:
-    return re.sub(
-        r"&(?![a-zA-Z]+;|#\d+;|#x[0-9A-Fa-f]+;)",
-        "&amp;",
-        xml_text,
-    )
-
-
-def parse_xml_content(content: str) -> dict[str, Any] | None:
-    block = extract_xml_block(content)
-    if not block:
-        return None
-    variants: list[dict[str, str]] = []
-
-    def strip_cdata(value: str) -> str:
-        return re.sub(r"^<!\[CDATA\[(.*)\]\]>$", r"\1", value, flags=re.DOTALL).strip()
-
-    try:
-        root = ElementTree.fromstring(sanitize_xml(block))
-        for variant_el in root.findall(".//variant"):
-            label = (variant_el.findtext("label") or "").strip()
-            text = strip_cdata(variant_el.findtext("text") or "")
-            variants.append({"label": label, "text": text})
-        if variants:
-            return {"variants": variants}
-    except ElementTree.ParseError as exc:
-        if os.getenv("GROQ_DEBUG", "0") == "1":
-            print("XML parse error:", exc)
-
-    # Regex fallback for slightly malformed XML.
-    for variant_match in re.finditer(
-        r"<variant[^>]*>([\s\S]*?)</variant>", block, re.IGNORECASE
-    ):
-        chunk = variant_match.group(1)
-        label_match = re.search(r"<label[^>]*>([\s\S]*?)</label>", chunk, re.IGNORECASE)
-        text_match = re.search(r"<text[^>]*>([\s\S]*?)</text>", chunk, re.IGNORECASE)
-        label = strip_cdata(label_match.group(1)) if label_match else ""
-        text = strip_cdata(text_match.group(1)) if text_match else ""
-        variants.append({"label": label, "text": text})
-
-    if variants:
-        return {"variants": variants}
-
-    # Last resort: extract label/text pairs in order.
-    labels = re.findall(r"<label[^>]*>([\s\S]*?)</label>", block, re.IGNORECASE)
-    texts = re.findall(r"<text[^>]*>([\s\S]*?)</text>", block, re.IGNORECASE)
-    for idx in range(min(len(labels), len(texts))):
-        variants.append(
-            {
-                "label": strip_cdata(labels[idx]),
-                "text": strip_cdata(texts[idx]),
-            }
-        )
-
-    return {"variants": variants} if variants else None
+def extract_response_text(data: dict[str, Any]) -> tuple[str, str]:
+    output = data.get("output", [])
+    texts: list[str] = []
+    refusals: list[str] = []
+    for item in output:
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "output_text":
+                    texts.append(part.get("text", ""))
+                elif part.get("type") == "refusal":
+                    refusals.append(part.get("refusal", ""))
+        elif item.get("type") == "refusal":
+            refusals.append(item.get("refusal", ""))
+    return "\n".join([t for t in texts if t]).strip(), "\n".join([r for r in refusals if r]).strip()
 
 
 @app.post("/generate", response_model=GenerateResponse)
@@ -391,36 +391,74 @@ async def generate(payload: GenerateRequest):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
 
     messages = build_prompt(payload)
+    system_msg = ""
+    user_msg = ""
+    for msg in messages:
+        if msg.get("role") == "system":
+            system_msg = msg.get("content", "")
+        elif msg.get("role") == "user":
+            user_msg = msg.get("content", "")
+
+    input_items = []
+    if user_msg:
+        input_items.append({"role": "user", "content": user_msg})
+    else:
+        input_items = [
+            {"role": msg.get("role"), "content": msg.get("content", "")}
+            for msg in messages
+            if msg.get("role") != "system"
+        ]
+        if not input_items:
+            input_items = [{"role": "user", "content": ""}]
 
     async with httpx.AsyncClient(timeout=30) as client:
+        request_body = {
+            "model": MODEL_NAME,
+            "input": input_items,
+            "instructions": system_msg,
+            "temperature": 0.6,
+            "max_output_tokens": 350,
+            "text": {"format": RESPONSE_SCHEMA},
+        }
         resp = await client.post(
             OPENAI_API_URL,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": MODEL_NAME,
-                "messages": messages,
-                "temperature": 0.6,
-                "max_tokens": 350,
-                "stop": ["</response>"]
-            },
+            json=request_body,
         )
+
+        if resp.status_code >= 400 and (
+            "response_format" in resp.text or "json_schema" in resp.text
+        ):
+            request_body["text"] = {"format": {"type": "json_object"}}
+            resp = await client.post(
+                OPENAI_API_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_body,
+            )
 
     if resp.status_code >= 400:
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
     data = resp.json()
-    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    content, refusal = extract_response_text(data)
+    if refusal:
+        raise HTTPException(status_code=502, detail=refusal)
+    if not content:
+        content = data.get("output_text", "")
     if not content:
         raise HTTPException(status_code=502, detail="Empty response from model")
 
-    raw = parse_xml_content(content)
+    raw = parse_json_content(content)
     if raw is None:
-        if os.getenv("GROQ_DEBUG", "0") == "1":
+        if os.getenv("OPENAI_DEBUG", os.getenv("GROQ_DEBUG", "0")) == "1":
             print("Model raw content:", content)
-        raise HTTPException(status_code=502, detail="Model did not return XML")
+        raise HTTPException(status_code=502, detail="Model did not return JSON")
 
     variants = normalize_variants(raw)
     if not variants:
