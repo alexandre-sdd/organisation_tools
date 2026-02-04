@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -84,6 +85,189 @@ class GenerateResponse(BaseModel):
 
 def tokenize(text: str) -> list[str]:
     return [tok for tok in re.split(r"[^a-z0-9]+", text.lower()) if len(tok) >= 4]
+
+
+def normalize_key(text: str) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+    return normalized
+
+
+def tokens_without_stopwords(text: str, stopwords: set[str]) -> set[str]:
+    return {tok for tok in normalize_key(text).split() if tok and tok not in stopwords}
+
+
+def match_entity(a: str, b: str, stopwords: set[str]) -> bool:
+    na = normalize_key(a)
+    nb = normalize_key(b)
+    if not na or not nb:
+        return False
+    if na in nb or nb in na:
+        return True
+    tokens_a = tokens_without_stopwords(a, stopwords)
+    tokens_b = tokens_without_stopwords(b, stopwords)
+    return len(tokens_a.intersection(tokens_b)) >= 1
+
+
+def is_nyc(location: str) -> bool:
+    loc = normalize_key(location)
+    return "new york" in loc or "nyc" in loc or loc.endswith(" ny")
+
+
+def build_anchor_candidates(
+    my_profile: dict[str, Any],
+    target_profile: dict[str, Any],
+    hooks: list[str],
+    derived_hooks: list[str],
+    target_tags: set[str],
+) -> list[dict[str, Any]]:
+    anchors: list[dict[str, Any]] = []
+    school_stop = {"university", "college", "school", "institute", "faculty"}
+    company_stop = {"group", "inc", "corp", "ltd", "llc", "company", "technologies", "tech"}
+
+    my_schools = my_profile.get("schools") or []
+    target_schools = [edu.get("school", "") for edu in target_profile.get("education") or []]
+    my_location = my_profile.get("location", "")
+    target_location = target_profile.get("location", "")
+
+    for my_school in my_schools:
+        for target_school in target_schools:
+            if match_entity(my_school, target_school, school_stop):
+                base = 12
+                text = f"{target_school} alum"
+                if is_nyc(my_location) and is_nyc(target_location):
+                    base += 4
+                    text = f"{target_school} alum in NYC"
+                anchors.append(
+                    {
+                        "type": "school",
+                        "text": text,
+                        "score": base,
+                        "evidence": f"{my_school} + {target_school} + {target_location}",
+                    }
+                )
+
+    my_experiences = my_profile.get("experiences") or []
+    for exp in target_profile.get("top_experiences") or []:
+        company = exp.get("company", "")
+        title = exp.get("title", "")
+        for my_exp in my_experiences:
+            if match_entity(my_exp, company, company_stop):
+                anchors.append(
+                    {
+                        "type": "company",
+                        "text": f"Both have experience at {company}",
+                        "score": 9,
+                        "evidence": f"{my_exp} + {company}",
+                    }
+                )
+        if company and title:
+            anchors.append(
+                {
+                    "type": "role",
+                    "text": f"{title} at {company}",
+                    "score": 6,
+                    "evidence": f"{title} + {company}",
+                }
+            )
+
+    if is_nyc(my_location) and is_nyc(target_location):
+        anchors.append(
+            {
+                "type": "location",
+                "text": "Both based in NYC",
+                "score": 6,
+                "evidence": f"{my_location} + {target_location}",
+            }
+        )
+
+    if "cv" in target_tags:
+        anchors.append(
+            {
+                "type": "domain",
+                "text": "Shared focus on computer vision",
+                "score": 7,
+                "evidence": "target_tags=cv",
+            }
+        )
+    if "analytics" in target_tags:
+        anchors.append(
+            {
+                "type": "domain",
+                "text": "Shared focus on analytics/data",
+                "score": 7,
+                "evidence": "target_tags=analytics",
+            }
+        )
+    if "product" in target_tags:
+        anchors.append(
+            {
+                "type": "domain",
+                "text": "Shared product/analytics focus",
+                "score": 5,
+                "evidence": "target_tags=product",
+            }
+        )
+
+    for hook in hooks:
+        anchors.append(
+            {
+                "type": "hook",
+                "text": hook,
+                "score": 4 + score_hook(hook, target_profile),
+                "evidence": "extension hook",
+            }
+        )
+
+    for hook in derived_hooks:
+        anchors.append(
+            {
+                "type": "derived",
+                "text": hook,
+                "score": 3 + score_hook(hook, target_profile),
+                "evidence": "derived hook",
+            }
+        )
+
+    # Deduplicate by text, keep highest score
+    deduped: dict[str, dict[str, Any]] = {}
+    for anchor in anchors:
+        key = normalize_key(anchor["text"])
+        if not key:
+            continue
+        if key not in deduped or anchor["score"] > deduped[key]["score"]:
+            deduped[key] = anchor
+
+    return sorted(deduped.values(), key=lambda a: a["score"], reverse=True)
+
+
+def select_anchor_plan(anchors: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    preferred_order = ["school", "company", "role", "domain", "location", "hook", "derived"]
+    plan: dict[str, dict[str, Any]] = {}
+    used_types: set[str] = set()
+    variants = ["short", "direct", "warm"]
+
+    for variant in variants:
+        for anchor in anchors:
+            if anchor["type"] not in used_types:
+                plan[variant] = anchor
+                used_types.add(anchor["type"])
+                break
+        if variant not in plan and anchors:
+            plan[variant] = anchors[0]
+
+    # Ensure preferred ordering if we have gaps
+    if anchors:
+        for variant in variants:
+            if variant not in plan:
+                for anchor in anchors:
+                    if anchor["type"] in preferred_order:
+                        plan[variant] = anchor
+                        break
+    return plan
 
 
 def build_target_text(target_profile: dict[str, Any]) -> str:
@@ -248,6 +432,15 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
         "would love to learn more",
     ]
 
+    anchor_candidates = build_anchor_candidates(
+        compact_my_profile,
+        compact_target_profile,
+        hooks,
+        derived,
+        target_tags,
+    )
+    anchor_plan = select_anchor_plan(anchor_candidates[:8])
+
     system = (
         "You write sharp, non-generic LinkedIn connection notes. "
         "Return strict JSON only (no markdown, no prose). "
@@ -271,6 +464,10 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
     proof_lines = [
         f"{idx + 1}. {item['point']} (score {item['score']})"
         for idx, item in enumerate(ranked_proof_points[:6])
+    ]
+    anchor_lines = [
+        f"{idx + 1}. [{item['type']}] {item['text']} (score {item['score']})"
+        for idx, item in enumerate(anchor_candidates[:6])
     ]
 
     context_text = "\n".join(
@@ -299,6 +496,14 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
             "DERIVED_HOOKS_RANKED:",
             *([f"- {line}" for line in derived_rank_lines] or ["- (none)"]),
             "",
+            "ANCHOR_CANDIDATES (ranked):",
+            *([f"- {line}" for line in anchor_lines] or ["- (none)"]),
+            "",
+            "ANCHOR_PLAN (use exactly as hook):",
+            f"- short: {anchor_plan.get('short', {}).get('text', '')}",
+            f"- direct: {anchor_plan.get('direct', {}).get('text', '')}",
+            f"- warm: {anchor_plan.get('warm', {}).get('text', '')}",
+            "",
             f"TARGET_TAGS: {', '.join(sorted(list(target_tags)))}",
             f"BANLIST: {', '.join(banlist)}",
             "",
@@ -306,7 +511,7 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
             "- Output strict JSON only. No explanations.",
             "- 3 variants: short, direct, warm.",
             "- <= 300 characters each.",
-            "- Each variant must include exactly ONE hook (prefer highest-scoring; diversify across variants).",
+            "- Each variant must include exactly ONE hook: use ANCHOR_PLAN for that variant.",
             "- Each variant must include exactly ONE proof point (aligned to hook theme).",
             "- End with a short CTA question.",
             "- If you think info is missing, still write the best possible notes and never mention missing info.",
