@@ -9,9 +9,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from xml.etree import ElementTree
 
-DEFAULT_MODEL_NAME = "llama-3.3-70b-versatile"
-MODEL_NAME = os.getenv("GROQ_MODEL", DEFAULT_MODEL_NAME)
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_MODEL_NAME = "gpt-4.1"
+MODEL_NAME = os.getenv("OPENAI_MODEL", DEFAULT_MODEL_NAME)
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+
+FALLBACK_PROOF_POINTS = [
+    "Built production-grade pipelines on European accounting data at Chanel; automated data-quality checks in pandas",
+    "Shipped analytics tools and monitoring dashboards for commercial performance at Sigma Group",
+    "Prototyped vehicle-tracking with camera + radar context at Forvia using YOLO/OpenCV",
+    "VP Outreach & Partnerships at Columbia Product Managers Club (speaker outreach + partnerships + events)",
+    "Daily stack: Python, pandas, SQL; ML foundations; dashboards and decision-support",
+    "Based in NYC; targeting Summer 2026 analytics/product/data internship",
+]
 
 app = FastAPI()
 app.add_middleware(
@@ -147,12 +156,16 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
     target_profile = payload.target_profile or {}
     hooks = [hook for hook in (payload.hooks or []) if hook][:3]
 
+    raw_proof_points = [p for p in (my_profile.get("proof_points") or []) if p]
+    if not raw_proof_points:
+        raw_proof_points = FALLBACK_PROOF_POINTS.copy()
+
     compact_my_profile = {
         "headline": my_profile.get("headline", ""),
         "location": my_profile.get("location", ""),
         "schools": (my_profile.get("schools") or [])[:3],
         "experiences": (my_profile.get("experiences") or [])[:3],
-        "proof_points": [p for p in (my_profile.get("proof_points") or []) if p][:6],
+        "proof_points": raw_proof_points[:6],
         "focus_areas": (my_profile.get("focus_areas") or [])[:6],
         "internship_goal": my_profile.get("internship_goal", ""),
         "do_not_say": (my_profile.get("do_not_say") or [])[:12],
@@ -185,7 +198,7 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
     ]
 
     target_tags = classify_target(compact_target_profile)
-    proof_points = [p for p in (my_profile.get("proof_points") or []) if p]
+    proof_points = raw_proof_points
     ranked_proof_points = sorted(
         [{"point": p, "score": score_proof_point(p, target_tags)} for p in proof_points],
         key=lambda item: item["score"],
@@ -211,67 +224,76 @@ def build_prompt(payload: GenerateRequest) -> list[dict[str, str]]:
         "Each variant must be <= 300 characters (hard limit). "
         "Each variant must contain exactly one hook, exactly one credibility proof point from my_profile.proof_points, "
         "and end with a soft CTA. "
-        "Each message must include a clear rationale for reaching out and avoid generic praise."
+        "Each message must include a clear rationale for reaching out and avoid generic praise. "
+        "Never refuse or explain constraints; always produce XML."
     )
 
-    user = {
-        "my_profile": compact_my_profile,
-        "target_profile": compact_target_profile,
-        "hooks": hooks,
-        "derived_hooks": derived,
-        "hook_candidates_ranked": hook_scores_sorted,
-        "derived_hook_scores": derived_scores,
-        "target_tags": sorted(list(target_tags)),
-        "proof_points_ranked": ranked_proof_points,
-        "banlist": banlist,
-        "instructions": {
-            "hard_rules": [
-                "Return strict XML matching the schema exactly",
-                "Create exactly 3 variants: short, direct, warm",
-                "Each variant must be <= 300 characters",
-                "Do not invent any detail not present in target_profile or my_profile",
-                "Each variant must use exactly 1 hook",
-                "Each variant must use exactly 1 proof point from my_profile.proof_points",
-                "End each variant with a soft CTA (e.g., 'Open to connect?')",
-                "Avoid all banlist phrases"
-            ],
-            "content_plan": [
-                "[Hook] + [Credibility] + [CTA]",
-                "Hook must be specific to target_profile",
-                "Credibility must align to the hook theme",
-                "CTA must be a short question at the very end"
-            ],
-            "hook_selection_rules": [
-                "Score hooks by specificity: overlap with target_profile fields + matching company/school + length",
-                "Prefer highest-scoring hook; if hooks are weak, use derived_hooks",
-                "Use different hooks across variants when 2+ good hooks exist",
-                "If only one strong hook exists, reuse it with different phrasing"
-            ],
-            "credibility_alignment_rules": [
-                "If hook is analytics/data: use Chanel pipelines or Sigma dashboards proof point",
-                "If hook is computer vision: use Forvia YOLO/OpenCV proof point",
-                "If hook is community/product: use Columbia PMC outreach proof point",
-                "If hook is internship/NYC: use the NYC Summer 2026 proof point",
-                "Otherwise choose the highest-ranked proof point"
-            ],
-            "style_guidance": {
-                "short": "1 sentence max, very dense, no filler",
-                "direct": "2 sentences max, professional, explicit reason for reaching out",
-                "warm": "2 short sentences, friendly but still specific"
-            },
-            "output_xml_schema": (
-                "<response>"
-                "<variant><label>short</label><text><![CDATA[...]]></text></variant>"
-                "<variant><label>direct</label><text><![CDATA[...]]></text></variant>"
-                "<variant><label>warm</label><text><![CDATA[...]]></text></variant>"
-                "</response>"
-            )
-        }
-    }
+    hook_rank_lines = [
+        f"{idx + 1}. {item['hook']} (score {item['score']})"
+        for idx, item in enumerate(hook_scores_sorted[:5])
+    ]
+    derived_rank_lines = [
+        f"{idx + 1}. {item['hook']} (score {item['score']})"
+        for idx, item in enumerate(derived_scores[:5])
+    ]
+    proof_lines = [
+        f"{idx + 1}. {item['point']} (score {item['score']})"
+        for idx, item in enumerate(ranked_proof_points[:6])
+    ]
+
+    context_text = "\n".join(
+        [
+            "MY_PROFILE:",
+            f"- headline: {compact_my_profile['headline']}",
+            f"- location: {compact_my_profile['location']}",
+            f"- schools: {', '.join(compact_my_profile['schools'])}",
+            f"- experiences: {', '.join(compact_my_profile['experiences'])}",
+            "- proof_points (use exactly one per variant):",
+            *[f"  {line}" for line in proof_lines],
+            f"- focus_areas: {', '.join(compact_my_profile['focus_areas'])}",
+            f"- internship_goal: {compact_my_profile['internship_goal']}",
+            "",
+            "TARGET_PROFILE:",
+            f"- name: {compact_target_profile['name']}",
+            f"- headline: {compact_target_profile['headline']}",
+            f"- location: {compact_target_profile['location']}",
+            f"- about: {compact_target_profile['about']}",
+            f"- top_experiences: {compact_target_profile['top_experiences']}",
+            f"- education: {compact_target_profile['education']}",
+            "",
+            "HOOKS_RANKED:",
+            *([f"- {line}" for line in hook_rank_lines] or ["- (none)"]),
+            "",
+            "DERIVED_HOOKS_RANKED:",
+            *([f"- {line}" for line in derived_rank_lines] or ["- (none)"]),
+            "",
+            f"TARGET_TAGS: {', '.join(sorted(list(target_tags)))}",
+            f"BANLIST: {', '.join(banlist)}",
+            "",
+            "RULES:",
+            "- Output strict XML only. No explanations.",
+            "- 3 variants: short, direct, warm.",
+            "- <= 300 characters each.",
+            "- Each variant must include exactly ONE hook (prefer highest-scoring; diversify across variants).",
+            "- Each variant must include exactly ONE proof point (aligned to hook theme).",
+            "- End with a short CTA question.",
+            "- If you think info is missing, still write the best possible notes and never mention missing info.",
+            "",
+            "CONTENT_PLAN:",
+            "[Hook] + [Credibility] + [CTA]",
+            "",
+            "OUTPUT_XML_SCHEMA:",
+            "<response>",
+            "  <variant><label>short</label><text><![CDATA[...]]></text></variant>",
+            "  <variant><label>direct</label><text><![CDATA[...]]></text></variant>",
+            "  <variant><label>warm</label><text><![CDATA[...]]></text></variant>",
+            "</response>",
+        ]
+    )
 
     return [
         {"role": "system", "content": system},
-        {"role": "user", "content": json.dumps(user)}
+        {"role": "user", "content": context_text}
     ]
 
 
@@ -364,21 +386,25 @@ def parse_xml_content(content: str) -> dict[str, Any] | None:
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(payload: GenerateRequest):
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set")
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
 
     messages = build_prompt(payload)
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            GROQ_API_URL,
-            headers={"Authorization": f"Bearer {api_key}"},
+            OPENAI_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json={
                 "model": MODEL_NAME,
                 "messages": messages,
                 "temperature": 0.6,
-                "max_tokens": 350
+                "max_tokens": 350,
+                "stop": ["</response>"]
             },
         )
 
