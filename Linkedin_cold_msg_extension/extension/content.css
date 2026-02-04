@@ -1,0 +1,102 @@
+#lnc-draft-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  background: #0a66c2;
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+#lnc-panel {
+  position: fixed;
+  bottom: 70px;
+  right: 24px;
+  width: 340px;
+  max-height: 60vh;
+  overflow: auto;
+  z-index: 2147483647;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  font-family: Arial, sans-serif;
+  color: #1f1f1f;
+}
+
+#lnc-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+#lnc-panel .lnc-body {
+  padding: 12px;
+  font-size: 12px;
+}
+
+#lnc-panel .lnc-variant {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+#lnc-panel .lnc-variant h4 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+#lnc-panel .lnc-variant p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+#lnc-panel .lnc-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#lnc-panel button {
+  background: #0a66c2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#lnc-panel button.secondary {
+  background: #4b4b4b;
+}
+
+#lnc-panel .lnc-status {
+  margin-bottom: 10px;
+  color: #666;
+}
+
+#lnc-panel .lnc-error {
+  color: #b00020;
+}
+
+#lnc-panel .lnc-close {
+  background: transparent;
+  color: #1f1f1f;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+}

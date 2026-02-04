@@ -1,0 +1,38 @@
+{
+  "headline": "Data/analytics + product-minded ML builder (Python, pandas, SQL) | MS Business Analytics (Columbia) | CentraleSupélec dual degree",
+  "location": "New York, NY",
+  "schools": [
+    "CentraleSupélec (Data Science / Statistics / Applied Math)",
+    "Columbia University (IEOR, MS in Business Analytics)"
+  ],
+  "experiences": [
+    "Chanel Europe — Advanced Analytics & Data Science",
+    "Sigma Group — Commercial Excellence",
+    "Forvia — Computer Vision Prototype (YOLO/OpenCV)"
+  ],
+  "proof_points": [
+    "Built production-grade pipelines on European accounting data at Chanel; automated data-quality checks in pandas",
+    "Shipped analytics tools and monitoring dashboards for commercial performance at Sigma Group",
+    "Prototyped vehicle-tracking with camera + radar context at Forvia using YOLO/OpenCV",
+    "VP Outreach & Partnerships at Columbia Product Managers Club (speaker outreach + partnerships + events)",
+    "Daily stack: Python, pandas, SQL; ML foundations; dashboards and decision-support",
+    "Based in NYC; targeting Summer 2026 analytics/product/data internship"
+  ],
+  "focus_areas": [
+    "analytics engineering",
+    "product analytics",
+    "data science",
+    "computer vision",
+    "decision-support dashboards"
+  ],
+  "internship_goal": "Summer 2026 internship in NYC (analytics/product/data roles)",
+  "do_not_say": [
+    "hope you are well",
+    "impressive",
+    "pick your brain",
+    "leverage synergy",
+    "reach out",
+    "would love to learn more"
+  ],
+  "tone_preference": "direct"
+}

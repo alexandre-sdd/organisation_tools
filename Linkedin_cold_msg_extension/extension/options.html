@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LinkedIn Note Copilot Options</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+        max-width: 700px;
+        color: #1f1f1f;
+      }
+      h1 {
+        margin-bottom: 16px;
+        font-size: 20px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin: 12px 0 6px;
+      }
+      input, textarea, select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      textarea {
+        min-height: 80px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+      button {
+        margin-top: 16px;
+        background: #0a66c2;
+        color: #fff;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .status {
+        margin-top: 10px;
+        color: #4b4b4b;
+      }
+      .error {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>LinkedIn Note Copilot Options</h1>
+
+    <label for="headline">Headline</label>
+    <input id="headline" type="text" placeholder="Your headline" />
+
+    <label for="schools">Schools (one per line)</label>
+    <textarea id="schools" placeholder="School 1\nSchool 2"></textarea>
+
+    <label for="experiences">Experiences (one per line)</label>
+    <textarea id="experiences" placeholder="Company 1\nCompany 2"></textarea>
+
+    <label>Proof points (3 total)</label>
+    <div class="row">
+      <input id="proof1" type="text" placeholder="Proof point 1" />
+      <input id="proof2" type="text" placeholder="Proof point 2" />
+      <input id="proof3" type="text" placeholder="Proof point 3" />
+    </div>
+
+    <label for="tone">Tone preference</label>
+    <select id="tone">
+      <option value="short">Short</option>
+      <option value="direct">Direct</option>
+      <option value="warm">Warm</option>
+    </select>
+
+    <button id="save">Save</button>
+    <div class="status" id="status"></div>
+
+    <script src="options.js"></script>
+  </body>
+</html>
