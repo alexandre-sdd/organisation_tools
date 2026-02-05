@@ -2,12 +2,23 @@ import json
 import os
 import re
 import unicodedata
+from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Load `server/.env` (if present) so local dev doesn't require re-exporting env vars.
+# This runs before we read OPENAI_MODEL / OPENAI_API_KEY from the environment.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
+except Exception:
+    # If python-dotenv isn't installed (or file is missing), fall back to process env.
+    pass
 
 DEFAULT_MODEL_NAME = "gpt-4o-2024-08-06"
 MODEL_NAME = os.getenv("OPENAI_MODEL", DEFAULT_MODEL_NAME)
