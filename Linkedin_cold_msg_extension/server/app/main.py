@@ -57,7 +57,7 @@ async def generate(payload: GenerateRequest):
     request_id = uuid.uuid4().hex
     # Persist logs alongside the extension artifacts for easy inspection.
     # Path: Linkedin_cold_msg_extension/logs/requests.ndjson
-    log_path = Path(__file__).resolve().parents[3] / "logs" / "requests.ndjson"
+    log_path = Path(__file__).resolve().parents[2] / "logs" / "requests.ndjson"
     log_record: dict[str, object] = {
         "ts": utc_now_iso(),
         "request_id": request_id,
