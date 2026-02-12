@@ -6,6 +6,7 @@ from ..planning.proof_points import proof_point_strength_score, score_proof_poin
 from ..planning.target_analysis import classify_target, derive_hooks, score_hook
 from ..utils.constants import BASE_BANLIST, FALLBACK_PROOF_POINTS, MAX_PROOF_POINTS, RESPONSE_SCHEMA
 from ..utils.debug import build_debug_log
+from ..utils.payload import as_plain_dict
 
 
 def build_prompt_context(
@@ -13,9 +14,16 @@ def build_prompt_context(
     request_id: str = "",
     model_name: str = "",
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
-    my_profile = payload.my_profile or {}
-    target_profile = payload.target_profile or {}
-    hooks = [hook for hook in (payload.hooks or []) if hook][:3]
+    if isinstance(payload, dict):
+        my_profile = as_plain_dict(payload.get("my_profile", {}))
+        target_profile = as_plain_dict(payload.get("target_profile", {}))
+        raw_hooks = payload.get("hooks") or []
+    else:
+        my_profile = as_plain_dict(getattr(payload, "my_profile", {}))
+        target_profile = as_plain_dict(getattr(payload, "target_profile", {}))
+        raw_hooks = getattr(payload, "hooks", None) or []
+
+    hooks = [hook for hook in raw_hooks if hook][:3]
 
     raw_proof_points = [p for p in (my_profile.get("proof_points") or []) if p]
     if not raw_proof_points:

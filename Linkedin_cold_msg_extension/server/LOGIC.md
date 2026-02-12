@@ -24,10 +24,22 @@ This document explains how the backend is structured, how requests are processed
 ## File/Module Responsibilities
 
 - `server/app/main.py`
-  - FastAPI entrypoint
-  - Handles `/generate` request
-  - Calls model and parses response
-  - Returns validated `GenerateResponse`
+  - FastAPI app factory
+  - CORS middleware configuration
+  - Router registration
+
+- `server/app/api/routes/generate.py`
+  - `/generate` endpoint
+  - Delegates to the generation service
+
+- `server/app/services/generation_service.py`
+  - End-to-end orchestration for `/generate`
+  - Build prompt context, call model, parse/normalize output
+  - Trim/validate variants and emit request traces
+
+- `server/app/services/openai_client.py`
+  - OpenAI Responses API adapter
+  - Handles schema fallback (`json_schema` -> `json_object`)
 
 - `server/app/config.py`
   - Loads `.env` from `server/.env`
@@ -167,9 +179,11 @@ If anything fails, the endpoint returns a 502 with a useful message.
 
 The folder layout mirrors the logic:
 
-- `app/main.py` = API surface and orchestration
+- `app/main.py` = app factory + middleware + router registration
+- `app/api/routes/generate.py` = HTTP endpoint layer
+- `app/services/generation_service.py` = generation orchestration
 - `app/config.py` = environment + configuration
-- `app/services/*` = core domain logic (prompting + parsing)
+- `app/services/*` = prompt planning, model client, parsing, validation
 - `app/models.py` = shared request/response shapes
 
-This keeps the endpoint thin, makes the prompt logic easy to read in one place, and keeps parsing isolated.
+This keeps endpoint code thin, isolates model I/O from business logic, and makes planning/parsing easier to maintain independently.

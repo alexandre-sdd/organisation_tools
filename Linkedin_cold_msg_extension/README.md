@@ -21,10 +21,10 @@ source .venv/bin/activate
 pip install -r server/requirements.txt
 ```
 
-2. Set your Groq API key:
+2. Set your OpenAI API key:
 
 ```bash
-export GROQ_API_KEY="your_key_here"
+export OPENAI_API_KEY="your_key_here"
 ```
 
 3. Run the server:
@@ -34,6 +34,14 @@ uvicorn server.main:app --reload --port 8000
 ```
 
 The extension will call `http://localhost:8000/generate`.
+
+### Backend layout (refactored)
+
+- `server/app/main.py`: FastAPI app factory + middleware + router wiring
+- `server/app/api/routes/generate.py`: `/generate` HTTP route only
+- `server/app/services/generation_service.py`: orchestration (planning -> model call -> parsing -> validation -> logging)
+- `server/app/services/openai_client.py`: OpenAI Responses API client
+- `server/app/services/planning/*` + `server/app/services/render/*`: deterministic bridge-plan construction and prompt rendering
 
 ## Notes
 

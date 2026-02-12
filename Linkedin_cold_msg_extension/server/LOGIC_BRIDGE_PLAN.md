@@ -19,7 +19,8 @@ This is meant to reduce generic outputs by removing model degrees of freedom.
 ## Where The Logic Lives
 
 - Prompt + planning: `Linkedin_cold_msg_extension/server/app/services/prompting.py`
-- Endpoint + logging: `Linkedin_cold_msg_extension/server/app/main.py`
+- Endpoint route: `Linkedin_cold_msg_extension/server/app/api/routes/generate.py`
+- Orchestration + logging: `Linkedin_cold_msg_extension/server/app/services/generation_service.py`
 - NDJSON append helper: `Linkedin_cold_msg_extension/server/app/logging_utils.py`
 
 ## Bridge Plan: Deterministic Planning
@@ -121,7 +122,7 @@ In the user message we include:
 - `BANLIST`
 - a recommended short template
 
-## Validation (Non-Blocking)
+## Validation + Retry
 
 `validate_variant_text(text, plan, banlist)` checks:
 
@@ -129,7 +130,7 @@ In the user message we include:
 - includes `target_fact`, `hook_text`, `proof_point`, `cta` (and `required_token` if present)
 - does not contain banlist phrases (case-insensitive)
 
-The endpoint currently logs validation violations but does not retry automatically.
+The generation service now retries once with a lower temperature when violations are present, then returns the best final attempt and logs all validation results.
 
 ## Traces: What Gets Logged (Always-On)
 
@@ -172,4 +173,3 @@ We can do this later without changing external interfaces by keeping:
 - `RESPONSE_SCHEMA`
 - `build_prompt(payload)` returning the same messages
 - `build_prompt_context(...)` as the single entrypoint used by `app/main.py`
-
