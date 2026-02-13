@@ -19,7 +19,7 @@ SHORT_EMPLOYMENT_TYPES = {
 TAG_PATTERNS = {
     "analytics": r"(\bdata\b|\banalytics\b|\bml\b|\bmachine learning\b|\bsql\b|\bpython\b|\bbi\b|business intelligence|\bstats?\b|\bstatistic\w*\b|\bquant\w*\b|\bai\b)",
     "product": r"(\bproduct\b|\bpm\b|product management|\bgrowth\b|\broadmap\b)",
-    "cv": r"(computer vision|vision|opencv|yolo|camera|radar|perception|imaging)",
+    "cv": r"(computer vision|machine vision|vision engineer(?:ing)?|opencv|yolo|camera|radar|perception|imaging)",
     "community": r"(community|partnership|outreach|events|club|association)",
     "finance": r"(finance|trading|investment|bank|equity)",
 }
