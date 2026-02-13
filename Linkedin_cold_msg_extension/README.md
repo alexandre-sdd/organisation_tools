@@ -12,7 +12,7 @@ Minimal Chrome Extension + FastAPI backend for drafting LinkedIn connection note
 6. Configure your profile data in the extension **Options** page.
    - `headline`, `location`, `schools`, `experiences`
    - `proof_points` (up to 6), `focus_areas`, `internship_goal`
-   - `do_not_say` phrases and `tone_preference`
+   - `do_not_say` phrases
 
 ## Backend (FastAPI)
 

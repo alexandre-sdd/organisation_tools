@@ -1,3 +1,5 @@
+VARIANT_LABELS = ["hook_1", "hook_2", "hook_3"]
+
 FALLBACK_PROOF_POINTS = [
     "Built production-grade pipelines on European accounting data at Chanel; automated data-quality checks in pandas",
     "Shipped analytics tools and monitoring dashboards for commercial performance at Sigma Group",
@@ -23,7 +25,7 @@ RESPONSE_SCHEMA = {
                     "properties": {
                         "label": {
                             "type": "string",
-                            "enum": ["short", "direct", "warm"],
+                            "enum": VARIANT_LABELS,
                         },
                         "text": {
                             "type": "string",
@@ -57,9 +59,9 @@ BASE_BANLIST = [
 ]
 
 CTA_BY_VARIANT = {
-    "short": "Open to connect?",
-    "direct": "Open to a quick chat?",
-    "warm": "Worth connecting?",
+    "hook_1": "Open to connect?",
+    "hook_2": "Open to a quick chat?",
+    "hook_3": "Worth connecting?",
 }
 
 DOMAIN_FACTS = [

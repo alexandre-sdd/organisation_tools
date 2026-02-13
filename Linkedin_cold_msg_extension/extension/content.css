@@ -40,6 +40,12 @@
   font-size: 14px;
 }
 
+#lnc-panel .lnc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 #lnc-panel .lnc-body {
   padding: 12px;
   font-size: 12px;
@@ -93,10 +99,18 @@
   color: #b00020;
 }
 
+#lnc-panel .lnc-refresh,
 #lnc-panel .lnc-close {
   background: transparent;
   color: #1f1f1f;
   border: none;
   font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
   cursor: pointer;
+}
+
+#lnc-panel .lnc-refresh[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

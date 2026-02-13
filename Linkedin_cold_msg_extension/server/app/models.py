@@ -15,7 +15,7 @@ class Education(BaseModel):
 
 
 class MyProfile(BaseModel):
-    # Keep extra keys to remain backward-compatible with extension payloads.
+    # Keep extra keys to remain robust to extension payload changes.
     model_config = ConfigDict(extra="allow")
 
     headline: str = ""
@@ -26,7 +26,6 @@ class MyProfile(BaseModel):
     focus_areas: list[str] = Field(default_factory=list)
     internship_goal: str = ""
     do_not_say: list[str] = Field(default_factory=list)
-    tone_preference: str = "warm"
 
 
 class TargetProfile(BaseModel):

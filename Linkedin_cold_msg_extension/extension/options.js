@@ -8,8 +8,7 @@ const profileApi = window.LNCProfile || {
     proof_points: [],
     focus_areas: [],
     internship_goal: "",
-    do_not_say: [],
-    tone_preference: "warm"
+    do_not_say: []
   })
 };
 
@@ -60,7 +59,6 @@ function populateForm(profile) {
   document.getElementById("focus_areas").value = (profile.focus_areas || []).join("\n");
   document.getElementById("internship_goal").value = profile.internship_goal || "";
   document.getElementById("do_not_say").value = (profile.do_not_say || []).join("\n");
-  document.getElementById("tone").value = profile.tone_preference || "warm";
 }
 
 async function saveProfile() {
@@ -72,8 +70,7 @@ async function saveProfile() {
     proof_points: splitLines(document.getElementById("proof_points").value),
     focus_areas: splitLines(document.getElementById("focus_areas").value),
     internship_goal: document.getElementById("internship_goal").value.trim(),
-    do_not_say: splitLines(document.getElementById("do_not_say").value),
-    tone_preference: document.getElementById("tone").value
+    do_not_say: splitLines(document.getElementById("do_not_say").value)
   });
 
   chrome.storage.local.set({ my_profile: profile }, () => {

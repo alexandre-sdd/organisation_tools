@@ -3,8 +3,14 @@ from typing import Any
 from ..planning.anchors import build_anchor_candidates, classify_anchor_type, select_anchor_plan
 from ..planning.bridge_plan import build_bridge_plan, build_target_facts
 from ..planning.proof_points import proof_point_strength_score, score_proof_point
-from ..planning.target_analysis import classify_target, derive_hooks, score_hook
-from ..utils.constants import BASE_BANLIST, FALLBACK_PROOF_POINTS, MAX_PROOF_POINTS, RESPONSE_SCHEMA
+from ..planning.target_analysis import classify_my_profile, classify_target, derive_hooks, score_hook
+from ..utils.constants import (
+    BASE_BANLIST,
+    FALLBACK_PROOF_POINTS,
+    MAX_PROOF_POINTS,
+    RESPONSE_SCHEMA,
+    VARIANT_LABELS,
+)
 from ..utils.debug import build_debug_log
 from ..utils.payload import as_plain_dict
 
@@ -25,6 +31,12 @@ def build_prompt_context(
 
     hooks = [hook for hook in raw_hooks if hook][:3]
 
+    raw_regen_cycle = my_profile.get("regen_cycle", 0)
+    try:
+        regen_cycle = max(0, int(raw_regen_cycle))
+    except (TypeError, ValueError):
+        regen_cycle = 0
+
     raw_proof_points = [p for p in (my_profile.get("proof_points") or []) if p]
     if not raw_proof_points:
         raw_proof_points = FALLBACK_PROOF_POINTS.copy()
@@ -38,7 +50,6 @@ def build_prompt_context(
         "focus_areas": (my_profile.get("focus_areas") or [])[:6],
         "internship_goal": my_profile.get("internship_goal", ""),
         "do_not_say": (my_profile.get("do_not_say") or [])[:12],
-        "tone_preference": my_profile.get("tone_preference", "warm"),
     }
 
     compact_target_profile = {
@@ -67,6 +78,7 @@ def build_prompt_context(
     ]
 
     target_tags = classify_target(compact_target_profile)
+    my_tags = classify_my_profile(compact_my_profile)
     proof_points = raw_proof_points[:MAX_PROOF_POINTS]
     ranked_proof_points = sorted(
         [
@@ -89,8 +101,9 @@ def build_prompt_context(
         hooks,
         derived,
         target_tags,
+        my_tags=my_tags,
     )
-    anchor_plan = select_anchor_plan(anchor_candidates[:8])
+    anchor_plan = select_anchor_plan(anchor_candidates[:8], cycle_index=regen_cycle)
 
     target_facts = build_target_facts(compact_target_profile)
     bridge_plan = build_bridge_plan(
@@ -109,7 +122,7 @@ def build_prompt_context(
         "You write tailored LinkedIn connection notes under a hard 300-character limit. "
         "Return strict JSON only (no markdown, no prose). "
         "Do NOT fabricate details. Use ONLY BRIDGE_PLAN facts. "
-        "Write exactly 3 variants labeled short, direct, warm. "
+        "Write exactly 3 alternatives labeled hook_1, hook_2, hook_3. "
         "Constraints per variant: "
         "(1) <= 300 characters. "
         "(2) Mention TARGET_FACT and HOOK_TEXT (exact wording preferred but light rephrasing is allowed). "
@@ -117,8 +130,9 @@ def build_prompt_context(
         "(4) Include INTENT naturally (exact wording not required). "
         "(5) Must include CTA verbatim at the very end. "
         "(6) If REQUIRED_TOKEN is present, include it verbatim once. "
-        "(7) Avoid robotic style: do NOT start every variant with the same template and do NOT mechanically repeat field names. "
-        "(8) Keep tone human, concise, and specific; 1-2 sentences max. "
+        "(7) Each variant must emphasize a different HOOK_TEXT from BRIDGE_PLAN; avoid reusing the same opener across variants. "
+        "(8) Avoid robotic style: do NOT start every variant with the same template and do NOT mechanically repeat field names. "
+        "(9) Keep tone human, concise, and specific; 1-2 sentences max. "
         "Avoid banlist phrases. "
         "Never refuse or explain constraints; always produce JSON."
     )
@@ -141,7 +155,7 @@ def build_prompt_context(
         return lines
 
     bridge_lines: list[str] = ["BRIDGE_PLAN (facts to include, no fabrication):"]
-    for variant in ["short", "direct", "warm"]:
+    for variant in VARIANT_LABELS:
         bridge_lines.extend(format_bridge_block(variant, bridge_plan.get(variant, {})))
 
     context_text = "\n".join(
@@ -164,9 +178,9 @@ def build_prompt_context(
             "OUTPUT_JSON_SCHEMA (shape):",
             "{",
             "  \"variants\": [",
-            "    {\"label\": \"short\", \"text\": \"...\", \"char_count\": 123},",
-            "    {\"label\": \"direct\", \"text\": \"...\", \"char_count\": 140},",
-            "    {\"label\": \"warm\", \"text\": \"...\", \"char_count\": 155}",
+            "    {\"label\": \"hook_1\", \"text\": \"...\", \"char_count\": 123},",
+            "    {\"label\": \"hook_2\", \"text\": \"...\", \"char_count\": 140},",
+            "    {\"label\": \"hook_3\", \"text\": \"...\", \"char_count\": 155}",
             "  ]",
             "}",
         ]
@@ -186,6 +200,8 @@ def build_prompt_context(
         derived_hooks=derived,
         hook_scores_sorted=hook_scores_sorted,
         derived_scores=derived_scores,
+        regen_cycle=regen_cycle,
+        my_tags=my_tags,
         target_tags=target_tags,
         ranked_proof_points=ranked_proof_points,
         anchor_candidates=anchor_candidates,

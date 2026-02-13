@@ -18,7 +18,7 @@ This document explains how the backend is structured, how requests are processed
    - `input` (user content)
    - `text.format` JSON schema
 4. The response is parsed and normalized into `variants`:
-   - 3 variants: `short`, `direct`, `warm`
+   - 3 alternatives: `hook_1`, `hook_2`, `hook_3`
    - each includes `label`, `text`, `char_count`
 
 ## File/Module Responsibilities
@@ -76,7 +76,6 @@ This document explains how the backend is structured, how requests are processed
   - `focus_areas` (max 6)
   - `internship_goal`
   - `do_not_say` (banlist)
-  - `tone_preference`
 
 - `target_profile` becomes:
   - `name`
@@ -145,15 +144,15 @@ This is displayed to the model explicitly as:
 
 ```
 ANCHOR_PLAN (use exactly as hook):
-- short: ...
-- direct: ...
-- warm: ...
+- hook_1: ...
+- hook_2: ...
+- hook_3: ...
 ```
 
 ### 6) System Prompt Rules
 The system message forces strict output:
 
-- Exactly 3 variants (`short`, `direct`, `warm`)
+- Exactly 3 alternatives (`hook_1`, `hook_2`, `hook_3`)
 - Each <= 300 chars
 - Each has:
   - exactly one hook (from anchor plan)

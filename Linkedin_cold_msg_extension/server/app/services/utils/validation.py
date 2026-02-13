@@ -35,9 +35,13 @@ def validate_variant_text(text: str, plan: dict[str, str], banlist: list[str]) -
     cta = plan.get("cta", "")
     required_token = plan.get("required_token", "")
 
-    if target_fact and not _contains_normalized(text, target_fact):
+    if target_fact and not (
+        _contains_normalized(text, target_fact) or _has_token_overlap(text, target_fact, minimum_hits=2)
+    ):
         violations.append("missing target_fact")
-    if hook_text and not _contains_normalized(text, hook_text):
+    if hook_text and not (
+        _contains_normalized(text, hook_text) or _has_token_overlap(text, hook_text, minimum_hits=2)
+    ):
         violations.append("missing hook_text")
     if proof_point and not _has_token_overlap(text, proof_point):
         violations.append("missing proof_point")

@@ -16,6 +16,14 @@ SHORT_EMPLOYMENT_TYPES = {
     "seasonal",
 }
 
+TAG_PATTERNS = {
+    "analytics": r"(\bdata\b|\banalytics\b|\bml\b|\bmachine learning\b|\bsql\b|\bpython\b|\bbi\b|business intelligence|\bstats?\b|\bstatistic\w*\b|\bquant\w*\b|\bai\b)",
+    "product": r"(\bproduct\b|\bpm\b|product management|\bgrowth\b|\broadmap\b)",
+    "cv": r"(computer vision|vision|opencv|yolo|camera|radar|perception|imaging)",
+    "community": r"(community|partnership|outreach|events|club|association)",
+    "finance": r"(finance|trading|investment|bank|equity)",
+}
+
 
 def is_likely_metadata_company(value: str) -> bool:
     normalized = normalize_key(value)
@@ -48,6 +56,34 @@ def build_target_text(target_profile: dict[str, Any]) -> str:
     for edu in target_profile.get("education") or []:
         parts.append(edu.get("school", ""))
     return " ".join([part for part in parts if part]).strip()
+
+
+def build_my_profile_text(my_profile: dict[str, Any]) -> str:
+    parts: list[str] = []
+    parts.extend(
+        [
+            my_profile.get("headline", ""),
+            my_profile.get("location", ""),
+            my_profile.get("internship_goal", ""),
+        ]
+    )
+    parts.extend(my_profile.get("experiences") or [])
+    parts.extend(my_profile.get("focus_areas") or [])
+    parts.extend(my_profile.get("proof_points") or [])
+    return " ".join([part for part in parts if part]).strip()
+
+
+def classify_text_tags(text: str) -> set[str]:
+    lowered = (text or "").lower()
+    tags: set[str] = set()
+    for tag, pattern in TAG_PATTERNS.items():
+        if re.search(pattern, lowered):
+            tags.add(tag)
+    return tags
+
+
+def classify_my_profile(my_profile: dict[str, Any]) -> set[str]:
+    return classify_text_tags(build_my_profile_text(my_profile))
 
 
 def score_hook(hook: str, target_profile: dict[str, Any]) -> int:
@@ -102,25 +138,7 @@ def derive_hooks(target_profile: dict[str, Any]) -> list[str]:
 
 
 def classify_target(target_profile: dict[str, Any]) -> set[str]:
-    text = build_target_text(target_profile).lower()
-    tags: set[str] = set()
-    if re.search(
-        r"(\bdata\b|\banalytics\b|\bml\b|\bmachine learning\b|\bsql\b|\bpython\b|\bbi\b|business intelligence|\bstats?\b|\bstatistic\w*\b|\bquant\w*\b|\bai\b)",
-        text,
-    ):
-        tags.add("analytics")
-    if re.search(r"(\bproduct\b|\bpm\b|product management|\bgrowth\b|\broadmap\b)", text):
-        tags.add("product")
-    if re.search(
-        r"(computer vision|vision|opencv|yolo|camera|radar|perception|imaging)",
-        text,
-    ):
-        tags.add("cv")
-    if re.search(r"(community|partnership|outreach|events|club|association)", text):
-        tags.add("community")
-    if re.search(r"(finance|trading|investment|bank|equity)", text):
-        tags.add("finance")
-    return tags
+    return classify_text_tags(build_target_text(target_profile))
 
 
 def extract_role_keyword(target_profile: dict[str, Any]) -> str:

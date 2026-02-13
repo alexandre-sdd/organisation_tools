@@ -1,6 +1,7 @@
 (() => {
   const BUTTON_ID = "lnc-draft-btn";
   const PANEL_ID = "lnc-panel";
+  const MAX_HOOKS = 3;
   const profileApi = window.LNCProfile || {
     normalizeProfile: (input) => (input && typeof input === "object" ? input : {}),
     getEmptyProfile: () => ({
@@ -11,11 +12,16 @@
       proof_points: [],
       focus_areas: [],
       internship_goal: "",
-      do_not_say: [],
-      tone_preference: "warm"
+      do_not_say: []
     })
   };
   const FALLBACK_PROFILE = profileApi.getEmptyProfile();
+  const generationState = {
+    targetProfile: null,
+    myProfile: null,
+    cycle: 0,
+    isGenerating: false
+  };
 
   const stopwords = new Set([
     "about","after","again","against","all","also","and","any","are","around","as","at","be","because","been","before","being","between","both","but","by","can","could","did","do","does","doing","down","during","each","for","from","further","had","has","have","having","he","her","here","hers","herself","him","himself","his","how","i","if","in","into","is","it","its","itself","just","me","more","most","my","myself","no","nor","not","now","of","off","on","once","only","or","other","our","ours","ourselves","out","over","own","same","she","should","so","some","such","than","that","the","their","theirs","them","themselves","then","there","these","they","this","those","through","to","too","under","until","up","very","was","we","were","what","when","where","which","while","who","whom","why","with","you","your","yours","yourself","yourselves"
@@ -457,7 +463,7 @@
     return profile;
   }
 
-  function generateHooks(target, myProfile) {
+  function buildHookCandidates(target, myProfile) {
     const hooks = [];
     const mySchools = (myProfile.schools || []).map((s) => s.toLowerCase());
     const myExperiences = (myProfile.experiences || []).map((s) => s.toLowerCase());
@@ -473,6 +479,11 @@
       const company = exp.company || "";
       if (company && myExperiences.some((s) => company.toLowerCase().includes(s))) {
         hooks.push(`Both have experience at ${company}`);
+      }
+      if (exp.title && company) {
+        hooks.push(`${exp.title} at ${company}`);
+      } else if (company) {
+        hooks.push(`${company} experience`);
       }
     }
 
@@ -493,10 +504,26 @@
 
     for (const keyword of unique(overlap)) {
       hooks.push(`Shared interest in ${keyword}`);
-      if (hooks.length >= 3) break;
     }
 
-    return unique(hooks).slice(0, 3);
+    return unique(hooks);
+  }
+
+  function rotateHooks(candidates, cycle, count = MAX_HOOKS) {
+    const list = unique(candidates);
+    if (!list.length) return [];
+    const size = Math.min(count, list.length);
+    const offset = ((Number(cycle) || 0) * size) % list.length;
+    const rotated = [];
+    for (let i = 0; i < size; i += 1) {
+      rotated.push(list[(offset + i) % list.length]);
+    }
+    return rotated;
+  }
+
+  function generateHooks(target, myProfile, cycle = 0) {
+    const candidates = buildHookCandidates(target, myProfile);
+    return rotateHooks(candidates, cycle, MAX_HOOKS);
   }
 
   function createButton() {
@@ -517,17 +544,29 @@
     panel.innerHTML = `
       <header>
         <span>LinkedIn Note Copilot</span>
-        <button class="lnc-close" aria-label="Close">×</button>
+        <div class="lnc-header-actions">
+          <button
+            class="lnc-refresh"
+            aria-label="Regenerate alternatives"
+            title="Regenerate alternatives with different hooks"
+            disabled
+          >&#x21bb;</button>
+          <button class="lnc-close" aria-label="Close">×</button>
+        </div>
       </header>
       <div class="lnc-body">
         <div class="lnc-status">Ready.</div>
         <div class="lnc-results"></div>
       </div>
     `;
+    panel.querySelector(".lnc-refresh").addEventListener("click", () => {
+      regenerateAlternatives(panel);
+    });
     panel.querySelector(".lnc-close").addEventListener("click", () => {
       panel.style.display = "none";
     });
     document.body.appendChild(panel);
+    updateRegenerateButton(panel);
     return panel;
   }
 
@@ -537,15 +576,30 @@
     status.classList.toggle("lnc-error", isError);
   }
 
+  function updateRegenerateButton(panel) {
+    const refreshBtn = panel.querySelector(".lnc-refresh");
+    if (!refreshBtn) return;
+    const readyToRegenerate = !!generationState.targetProfile && !!generationState.myProfile;
+    refreshBtn.disabled = generationState.isGenerating || !readyToRegenerate;
+  }
+
   function renderVariants(panel, variants) {
     const container = panel.querySelector(".lnc-results");
     container.innerHTML = "";
 
-    for (const variant of variants) {
+    const prettyLabel = (rawLabel, index) => {
+      const label = String(rawLabel || "").trim().toLowerCase();
+      if (label === "hook_1") return "Alternative 1";
+      if (label === "hook_2") return "Alternative 2";
+      if (label === "hook_3") return "Alternative 3";
+      return `Alternative ${index + 1}`;
+    };
+
+    for (const [index, variant] of variants.entries()) {
       const card = document.createElement("div");
       card.className = "lnc-variant";
       card.innerHTML = `
-        <h4>${variant.label || "variant"} · ${variant.char_count || variant.text.length} chars</h4>
+        <h4>${prettyLabel(variant.label, index)} · ${variant.char_count || variant.text.length} chars</h4>
         <p>${variant.text}</p>
         <div class="lnc-actions">
           <button data-action="copy">Copy</button>
@@ -608,6 +662,66 @@
     }
   }
 
+  async function requestAlternatives(panel, targetProfile, myProfile, cycle) {
+    if (generationState.isGenerating) return;
+
+    const hooks = generateHooks(targetProfile, myProfile, cycle);
+    const progress =
+      cycle > 0 ? `Regenerating alternatives (${cycle + 1})...` : "Generating notes...";
+    setStatus(panel, progress);
+
+    generationState.isGenerating = true;
+    updateRegenerateButton(panel);
+
+    try {
+      const resp = await fetch("http://localhost:8000/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          my_profile: {
+            ...myProfile,
+            regen_cycle: cycle
+          },
+          target_profile: targetProfile,
+          hooks
+        })
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server error: ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      if (!data.variants || !Array.isArray(data.variants)) {
+        throw new Error("Invalid response from server.");
+      }
+
+      renderVariants(panel, data.variants);
+      const doneMessage = cycle > 0 ? "New alternatives generated." : "Done.";
+      setStatus(panel, doneMessage);
+    } catch (err) {
+      setStatus(panel, `Failed to generate notes: ${err.message}`, true);
+    } finally {
+      generationState.isGenerating = false;
+      updateRegenerateButton(panel);
+    }
+  }
+
+  async function regenerateAlternatives(panel) {
+    if (generationState.isGenerating) return;
+    if (!generationState.targetProfile || !generationState.myProfile) {
+      setStatus(panel, "Generate notes once before regenerating.", true);
+      return;
+    }
+    generationState.cycle += 1;
+    await requestAlternatives(
+      panel,
+      generationState.targetProfile,
+      generationState.myProfile,
+      generationState.cycle
+    );
+  }
+
   async function handleClick() {
     const panel = createPanel();
     panel.style.display = "block";
@@ -626,38 +740,19 @@
       myProfile = (await withTimeout(ensureProfile(), 1500)) || FALLBACK_PROFILE;
     } catch (err) {
       setStatus(panel, toProfileErrorMessage(err), true);
+      generationState.targetProfile = null;
+      generationState.myProfile = null;
+      generationState.cycle = 0;
+      updateRegenerateButton(panel);
       return;
     }
 
-    const hooks = generateHooks(targetProfile, myProfile);
+    generationState.targetProfile = targetProfile;
+    generationState.myProfile = myProfile;
+    generationState.cycle = 0;
+    updateRegenerateButton(panel);
 
-    setStatus(panel, "Generating notes...");
-
-    try {
-      const resp = await fetch("http://localhost:8000/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          my_profile: myProfile,
-          target_profile: targetProfile,
-          hooks
-        })
-      });
-
-      if (!resp.ok) {
-        throw new Error(`Server error: ${resp.status}`);
-      }
-
-      const data = await resp.json();
-      if (!data.variants || !Array.isArray(data.variants)) {
-        throw new Error("Invalid response from server.");
-      }
-
-      renderVariants(panel, data.variants);
-      setStatus(panel, "Done.");
-    } catch (err) {
-      setStatus(panel, `Failed to generate notes: ${err.message}`, true);
-    }
+    await requestAlternatives(panel, targetProfile, myProfile, generationState.cycle);
   }
 
   function init() {

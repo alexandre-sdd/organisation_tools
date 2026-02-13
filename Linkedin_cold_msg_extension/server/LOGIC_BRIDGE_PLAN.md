@@ -8,7 +8,7 @@ It does **not** replace `Linkedin_cold_msg_extension/server/LOGIC.md`; it comple
 
 The system used to ask the model to “write good notes” with ranked hints.
 
-Now the backend builds a deterministic plan per variant (`short`, `direct`, `warm`) and then forces the model to:
+Now the backend builds a deterministic plan per alternative (`hook_1`, `hook_2`, `hook_3`) and then forces the model to:
 
 - include specific strings verbatim (`TARGET_FACT`, `HOOK_TEXT`, `PROOF_POINT`, `CTA`, optional `REQUIRED_TOKEN`)
 - include a fixed “bridge” sentence that contains both `TARGET_FACT` and `PROOF_POINT`
@@ -80,7 +80,7 @@ If `required_token` would duplicate the `target_fact`, we try to substitute a ro
 
 ### Bridge Plan (`build_bridge_plan`)
 
-For each variant (`short`, `direct`, `warm`) we build:
+For each alternative (`hook_1`, `hook_2`, `hook_3`) we build:
 
 ```json
 {
@@ -95,10 +95,10 @@ For each variant (`short`, `direct`, `warm`) we build:
 
 Key rules:
 
-- `cta` is fixed per variant:
-  - short: `Open to connect?`
-  - direct: `Open to a quick chat?`
-  - warm: `Worth connecting?`
+- `cta` is fixed per alternative:
+  - hook_1: `Open to connect?`
+  - hook_2: `Open to a quick chat?`
+  - hook_3: `Worth connecting?`
 - `hook_text` comes from `anchor_plan[variant].text` unless the anchor is too generic:
   - if anchor type is `domain` or `location` and score < 7, `hook_text` becomes the variant’s `target_fact`
 

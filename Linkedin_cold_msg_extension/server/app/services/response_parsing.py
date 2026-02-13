@@ -4,12 +4,14 @@ from typing import Any
 
 try:
     from ..models import Variant
+    from .utils.constants import VARIANT_LABELS
 except ImportError:  # pragma: no cover
     from models import Variant
+    from services.utils.constants import VARIANT_LABELS
 
 
 def normalize_variants(raw: dict[str, Any]) -> list[Variant]:
-    desired_labels = ["short", "direct", "warm"]
+    desired_labels = VARIANT_LABELS
     variants = []
     items = raw.get("variants", [])
     for index, item in enumerate(items):
@@ -18,7 +20,7 @@ def normalize_variants(raw: dict[str, Any]) -> list[Variant]:
             continue
         if len(text) > 300:
             text = text[:297].rstrip() + "..."
-        label = (item.get("label") or "").strip()
+        label = (item.get("label") or "").strip().lower()
         if label not in desired_labels:
             label = desired_labels[index] if index < len(desired_labels) else "variant"
         variants.append(Variant(label=label, text=text, char_count=len(text)))
