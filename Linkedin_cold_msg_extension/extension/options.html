@@ -30,11 +30,6 @@
       textarea {
         min-height: 80px;
       }
-      .row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-      }
       button {
         margin-top: 16px;
         background: #0a66c2;
@@ -60,18 +55,26 @@
     <label for="headline">Headline</label>
     <input id="headline" type="text" placeholder="Your headline" />
 
+    <label for="location">Location</label>
+    <input id="location" type="text" placeholder="New York, NY" />
+
     <label for="schools">Schools (one per line)</label>
     <textarea id="schools" placeholder="School 1\nSchool 2"></textarea>
 
     <label for="experiences">Experiences (one per line)</label>
-    <textarea id="experiences" placeholder="Company 1\nCompany 2"></textarea>
+    <textarea id="experiences" placeholder="Company or experience 1\nCompany or experience 2"></textarea>
 
-    <label>Proof points (3 total)</label>
-    <div class="row">
-      <input id="proof1" type="text" placeholder="Proof point 1" />
-      <input id="proof2" type="text" placeholder="Proof point 2" />
-      <input id="proof3" type="text" placeholder="Proof point 3" />
-    </div>
+    <label for="proof_points">Proof points (up to 6, one per line)</label>
+    <textarea id="proof_points" placeholder="Concrete achievement 1\nConcrete achievement 2"></textarea>
+
+    <label for="focus_areas">Focus areas (up to 6, one per line)</label>
+    <textarea id="focus_areas" placeholder="product analytics\ndata science"></textarea>
+
+    <label for="internship_goal">Internship goal</label>
+    <input id="internship_goal" type="text" placeholder="Summer 2026 internship in NYC..." />
+
+    <label for="do_not_say">Phrases to avoid (up to 12, one per line)</label>
+    <textarea id="do_not_say" placeholder="hope you are well\npick your brain"></textarea>
 
     <label for="tone">Tone preference</label>
     <select id="tone">
@@ -83,6 +86,7 @@
     <button id="save">Save</button>
     <div class="status" id="status"></div>
 
+    <script src="profile.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

@@ -1,13 +1,21 @@
 (() => {
   const BUTTON_ID = "lnc-draft-btn";
   const PANEL_ID = "lnc-panel";
-  const DEFAULT_PROFILE = {
-    headline: "",
-    schools: [],
-    experiences: [],
-    proof_points: ["", "", ""],
-    tone_preference: "warm"
+  const profileApi = window.LNCProfile || {
+    normalizeProfile: (input) => (input && typeof input === "object" ? input : {}),
+    getEmptyProfile: () => ({
+      headline: "",
+      location: "",
+      schools: [],
+      experiences: [],
+      proof_points: [],
+      focus_areas: [],
+      internship_goal: "",
+      do_not_say: [],
+      tone_preference: "warm"
+    })
   };
+  const FALLBACK_PROFILE = profileApi.getEmptyProfile();
 
   const stopwords = new Set([
     "about","after","again","against","all","also","and","any","are","around","as","at","be","because","been","before","being","between","both","but","by","can","could","did","do","does","doing","down","during","each","for","from","further","had","has","have","having","he","her","here","hers","herself","him","himself","his","how","i","if","in","into","is","it","its","itself","just","me","more","most","my","myself","no","nor","not","now","of","off","on","once","only","or","other","our","ours","ourselves","out","over","own","same","she","should","so","some","such","than","that","the","their","theirs","them","themselves","then","there","these","they","this","those","through","to","too","under","until","up","very","was","we","were","what","when","where","which","while","who","whom","why","with","you","your","yours","yourself","yourselves"
@@ -148,6 +156,43 @@
       /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(text);
   }
 
+  function normalizeKey(text) {
+    return cleanText(text).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  function isEmploymentTypeLine(text) {
+    return /^(full[-\s]?time|part[-\s]?time|contract|temporary|freelance|internship|apprenticeship|self[-\s]?employed|seasonal)$/i.test(
+      cleanText(text)
+    );
+  }
+
+  function isLikelyMetadataLine(text) {
+    return isTimeLine(text) || isEmploymentTypeLine(text);
+  }
+
+  function isContextInvalidatedError(err) {
+    const message = String(err?.message || err || "").toLowerCase();
+    return message.includes("extension context invalidated");
+  }
+
+  function toProfileErrorMessage(err) {
+    if (isContextInvalidatedError(err)) {
+      return "Extension was reloaded. Refresh this LinkedIn tab, then click Draft connection note again.";
+    }
+    return `Profile extraction failed: ${err?.message || "Unknown error."}`;
+  }
+
+  function extractCompanyCandidate(text) {
+    return cleanText((text || "").split(" · ")[0].split("•")[0]).trim();
+  }
+
+  function isValidCompanyCandidate(company, title = "") {
+    if (!company) return false;
+    if (isLikelyMetadataLine(company)) return false;
+    if (normalizeKey(company) === normalizeKey(title)) return false;
+    return company.length >= 2;
+  }
+
   function extractExperience() {
     const section =
       document.querySelector("section#experience") ||
@@ -164,6 +209,10 @@
     const experiences = [];
     for (const item of items) {
       if (!canQuery(item)) continue;
+
+      const visibleLines = collectVisibleLines(item);
+      const structuredLines = visibleLines.filter((line) => !isLikelyMetadataLine(line));
+
       let title = queryText(
         [
           ".mr1.t-bold span[aria-hidden='true']",
@@ -173,6 +222,10 @@
         ],
         item
       );
+      if (isLikelyMetadataLine(title)) {
+        title = "";
+      }
+
       let companyLine = queryText(
         [
           ".t-14.t-normal span[aria-hidden='true']",
@@ -182,12 +235,35 @@
         ],
         item
       );
-      if (!title || !companyLine) {
-        const lines = collectVisibleLines(item).filter((line) => !isTimeLine(line));
-        title = title || lines[0] || "";
-        companyLine = companyLine || lines[1] || "";
+      let company = extractCompanyCandidate(companyLine);
+
+      if (!title) {
+        title = structuredLines[0] || "";
       }
-      const company = companyLine.split(" · ")[0].split("•")[0].trim();
+
+      if (!company || !isValidCompanyCandidate(company, title)) {
+        for (const line of structuredLines) {
+          const candidate = extractCompanyCandidate(line);
+          if (isValidCompanyCandidate(candidate, title)) {
+            company = candidate;
+            break;
+          }
+        }
+      }
+
+      if (!company && title && /\sat\s/i.test(title)) {
+        const parts = title.split(/\sat\s/i).map((part) => cleanText(part));
+        if (parts.length >= 2) {
+          const maybeTitle = parts[0];
+          const maybeCompany = parts.slice(1).join(" at ").trim();
+          if (maybeTitle) {
+            title = maybeTitle;
+          }
+          if (isValidCompanyCandidate(maybeCompany, title)) {
+            company = maybeCompany;
+          }
+        }
+      }
 
       if (title) {
         experiences.push({ title, company: company || "" });
@@ -271,20 +347,60 @@
   }
 
   async function ensureProfile() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(["my_profile"], async (res) => {
-        if (res.my_profile) {
-          resolve(res.my_profile);
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage.local.get(["my_profile"], async (res) => {
+          const runtimeError = chrome.runtime?.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message));
+            return;
+          }
+
+          if (res.my_profile) {
+            const normalized = profileApi.normalizeProfile(res.my_profile);
+            const changed = JSON.stringify(normalized) !== JSON.stringify(res.my_profile);
+            if (changed) {
+              chrome.storage.local.set({ my_profile: normalized }, () => {
+                const setError = chrome.runtime?.lastError;
+                if (setError) {
+                  reject(new Error(setError.message));
+                  return;
+                }
+                resolve(normalized);
+              });
+            } else {
+              resolve(normalized);
+            }
+            return;
+          }
+
+          try {
+            const resp = await fetch(chrome.runtime.getURL("default_profile.json"));
+            const defaults = await resp.json();
+            const normalizedDefaults = profileApi.normalizeProfile(defaults);
+            chrome.storage.local.set({ my_profile: normalizedDefaults }, () => {
+              const setError = chrome.runtime?.lastError;
+              if (setError) {
+                reject(new Error(setError.message));
+                return;
+              }
+              resolve(normalizedDefaults);
+            });
+          } catch (err) {
+            if (isContextInvalidatedError(err)) {
+              reject(err);
+              return;
+            }
+            resolve(FALLBACK_PROFILE);
+          }
+        });
+      } catch (err) {
+        if (isContextInvalidatedError(err)) {
+          reject(err);
           return;
         }
-        try {
-          const resp = await fetch(chrome.runtime.getURL("default_profile.json"));
-          const defaults = await resp.json();
-          chrome.storage.local.set({ my_profile: defaults }, () => resolve(defaults));
-        } catch (err) {
-          resolve(DEFAULT_PROFILE);
-        }
-      });
+        resolve(FALLBACK_PROFILE);
+      }
     });
   }
 
@@ -507,9 +623,9 @@
       if (!targetProfile.name && !targetProfile.headline) {
         throw new Error("Couldn't find profile details. Scroll to the top and try again.");
       }
-      myProfile = (await withTimeout(ensureProfile(), 1500)) || DEFAULT_PROFILE;
+      myProfile = (await withTimeout(ensureProfile(), 1500)) || FALLBACK_PROFILE;
     } catch (err) {
-      setStatus(panel, `Profile extraction failed: ${err.message}`, true);
+      setStatus(panel, toProfileErrorMessage(err), true);
       return;
     }
 

@@ -1,13 +1,13 @@
-import re
 from typing import Any
 
 from ..utils.constants import CTA_BY_VARIANT, DOMAIN_FACTS
 from .proof_points import select_proof_point_for_variant
 from .target_analysis import (
+    classify_target,
     extract_company_from_fact,
     extract_headline_keyword,
-    extract_role_keyword,
     is_domain_fact,
+    is_likely_metadata_company,
 )
 from ..utils.text_utils import compact_role_title, is_nyc, match_entity, normalize_key
 
@@ -16,19 +16,29 @@ def build_target_facts(target_profile: dict[str, Any]) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = []
     top_experiences = target_profile.get("top_experiences") or []
 
-    if top_experiences:
-        first = top_experiences[0] or {}
-        title = compact_role_title(first.get("title", ""))
-        company = first.get("company", "")
-        if title and company:
-            facts.append(
-                {"type": "role_company", "text": f"{title} at {company}", "score": 12}
-            )
+    first_valid_pair = None
+    for exp in top_experiences:
+        title = compact_role_title((exp or {}).get("title", ""))
+        company = (exp or {}).get("company", "")
+        if title and company and not is_likely_metadata_company(company):
+            first_valid_pair = {"title": title, "company": company}
+            break
+    if first_valid_pair:
+        facts.append(
+            {
+                "type": "role_company",
+                "text": f"{first_valid_pair['title']} at {first_valid_pair['company']}",
+                "score": 12,
+            }
+        )
 
     for exp in top_experiences:
-        company = exp.get("company", "")
-        if company:
+        company = (exp or {}).get("company", "")
+        title = compact_role_title((exp or {}).get("title", ""))
+        if company and not is_likely_metadata_company(company):
             facts.append({"type": "company", "text": company, "score": 10})
+        elif title and not is_likely_metadata_company(title):
+            facts.append({"type": "company", "text": title, "score": 9})
 
     education = target_profile.get("education") or []
     if education:
@@ -38,24 +48,16 @@ def build_target_facts(target_profile: dict[str, Any]) -> list[dict[str, Any]]:
 
     headline = target_profile.get("headline", "")
     about = target_profile.get("about", "")
-    domain_text = f"{headline} {about}".lower().strip()
-    domain_tags: set[str] = set()
-    if re.search(
-        r"(data|analytics|ml|machine learning|sql|python|bi|business intelligence|stats|statistic|quant|ai)",
-        domain_text,
-    ):
-        domain_tags.add("analytics")
-    if re.search(r"(product|pm|product management|growth|roadmap)", domain_text):
-        domain_tags.add("product")
-    if re.search(
-        r"(computer vision|vision|opencv|yolo|camera|radar|perception|imaging)",
-        domain_text,
-    ):
-        domain_tags.add("cv")
-    if re.search(r"(community|partnership|outreach|events|club|association)", domain_text):
-        domain_tags.add("community")
-    if re.search(r"(finance|trading|investment|bank|equity)", domain_text):
-        domain_tags.add("finance")
+    domain_tags = classify_target(
+        {
+            "name": "",
+            "headline": headline,
+            "location": "",
+            "about": about,
+            "top_experiences": [],
+            "education": [],
+        }
+    )
 
     for tag, phrase in DOMAIN_FACTS:
         if tag in domain_tags:
@@ -93,7 +95,7 @@ def boost_school_facts(my_profile: dict[str, Any], target_facts: list[dict[str, 
         if fact.get("type") == "school" and my_schools:
             school_text = fact.get("text", "").replace(" alum", "").strip()
             for my_school in my_schools:
-                if match_entity(my_school, school_text, school_stop):
+                if match_entity(my_school, school_text, school_stop, min_token_overlap=2):
                     score += 2
                     break
         boosted.append({"type": fact.get("type"), "text": fact.get("text", ""), "score": score})
@@ -102,9 +104,9 @@ def boost_school_facts(my_profile: dict[str, Any], target_facts: list[dict[str, 
 
 def select_required_token(my_profile: dict[str, Any], target_profile: dict[str, Any]) -> str:
     top_experiences = target_profile.get("top_experiences") or []
-    if top_experiences:
-        company = (top_experiences[0] or {}).get("company", "")
-        if company:
+    for exp in top_experiences:
+        company = (exp or {}).get("company", "")
+        if company and not is_likely_metadata_company(company):
             return company
 
     education = target_profile.get("education") or []
@@ -113,7 +115,7 @@ def select_required_token(my_profile: dict[str, Any], target_profile: dict[str, 
         if school:
             school_stop = {"university", "college", "school", "institute", "faculty"}
             for my_school in (my_profile.get("schools") or []):
-                if match_entity(my_school, school, school_stop):
+                if match_entity(my_school, school, school_stop, min_token_overlap=2):
                     return school
 
     headline = target_profile.get("headline", "")
@@ -123,8 +125,11 @@ def select_required_token(my_profile: dict[str, Any], target_profile: dict[str, 
 def build_intent(tags: set[str], target_fact: str, target_profile: dict[str, Any]) -> str:
     top_experiences = target_profile.get("top_experiences") or []
     company_or_role = ""
-    if top_experiences:
-        company_or_role = (top_experiences[0] or {}).get("company", "")
+    for exp in top_experiences:
+        company = (exp or {}).get("company", "")
+        if company and not is_likely_metadata_company(company):
+            company_or_role = company
+            break
 
     if not company_or_role:
         if not is_domain_fact(target_fact):
@@ -192,9 +197,6 @@ def build_bridge_plan(
             chosen = {"type": "other", "text": "", "score": 0}
         selected_facts[variant] = chosen
 
-    required_base = select_required_token(my_profile, target_profile)
-    role_keyword = extract_role_keyword(target_profile)
-
     plan: dict[str, dict[str, str]] = {}
     for variant in variants:
         anchor = anchor_plan.get(variant, {}) or {}
@@ -205,6 +207,7 @@ def build_bridge_plan(
 
         if anchor_type in {"domain", "location"} and anchor_score < 7 and high_signal_fact:
             hook_text = target_fact or high_signal_fact.get("text", "")
+        hook_text = compact_hook_text(hook_text, target_fact)
 
         proof_point = select_proof_point_for_variant(
             target_tags, anchor_type, proof_points, ranked_proof_points
@@ -212,10 +215,8 @@ def build_bridge_plan(
         intent = build_intent(target_tags, target_fact, target_profile)
         cta = CTA_BY_VARIANT[variant]
 
-        required_token = required_base
-        if required_token and normalize_key(required_token) == normalize_key(target_fact):
-            if role_keyword:
-                required_token = role_keyword
+        # Required token is intentionally disabled to avoid unnatural forced insertions.
+        required_token = ""
 
         plan[variant] = {
             "target_fact": target_fact,
@@ -227,3 +228,14 @@ def build_bridge_plan(
         }
 
     return plan
+
+
+def compact_hook_text(hook_text: str, target_fact: str) -> str:
+    text = " ".join((hook_text or "").split()).strip()
+    if not text:
+        return target_fact or ""
+    if len(text) <= 70:
+        return text
+    if target_fact and len(target_fact) <= 70:
+        return target_fact
+    return text[:67].rstrip() + "..."

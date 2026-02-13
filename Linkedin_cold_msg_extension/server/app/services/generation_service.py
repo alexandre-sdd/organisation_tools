@@ -104,6 +104,7 @@ class GenerationService:
         final_openai_status: int | None = None
         final_openai_fallback_status: int | None = None
         final_content = ""
+        best_result: dict[str, Any] | None = None
 
         for idx, settings in enumerate(self.attempts, start=1):
             try:
@@ -210,6 +211,25 @@ class GenerationService:
             log_record["attempts"].append(attempt_log)
 
             any_violations = any(item["violations"] for item in validations)
+            violation_count = sum(len(item["violations"]) for item in validations)
+            snapshot = {
+                "violation_count": violation_count,
+                "variants": [
+                    Variant(label=variant.label, text=variant.text, char_count=variant.char_count)
+                    for variant in trimmed_variants
+                ],
+                "messages": messages,
+                "bridge_plan": bridge_plan,
+                "banlist": banlist,
+                "debug": debug_log,
+                "validations": validations,
+                "openai_status": result.status_code,
+                "openai_fallback_status": result.fallback_status_code,
+                "content": content,
+            }
+            if best_result is None or violation_count < best_result["violation_count"]:
+                best_result = snapshot
+
             final_variants = trimmed_variants
             final_messages = messages
             final_bridge_plan = bridge_plan
@@ -228,6 +248,18 @@ class GenerationService:
             log_record["status"] = "error"
             append_ndjson(self.log_path, log_record)
             raise HTTPException(status_code=502, detail="No variants produced")
+
+        final_violation_count = sum(len(item.get("violations") or []) for item in (final_validations or []))
+        if best_result and best_result["violation_count"] < final_violation_count:
+            final_variants = best_result["variants"]
+            final_messages = best_result["messages"]
+            final_bridge_plan = best_result["bridge_plan"]
+            final_banlist = best_result["banlist"]
+            final_debug = best_result["debug"]
+            final_validations = best_result["validations"]
+            final_openai_status = best_result["openai_status"]
+            final_openai_fallback_status = best_result["openai_fallback_status"]
+            final_content = best_result["content"]
 
         log_record["model_output_preview"] = final_content[:1200]
         log_record["final_messages"] = final_messages

@@ -106,21 +106,19 @@ def build_prompt_context(
     )
 
     system = (
-        "You write maximally tailored LinkedIn connection notes under a hard 300-character limit. "
+        "You write tailored LinkedIn connection notes under a hard 300-character limit. "
         "Return strict JSON only (no markdown, no prose). "
-        "Do NOT fabricate details. Use ONLY the BRIDGE_PLAN strings below. "
+        "Do NOT fabricate details. Use ONLY BRIDGE_PLAN facts. "
         "Write exactly 3 variants labeled short, direct, warm. "
-        "Hard constraints per variant: "
+        "Constraints per variant: "
         "(1) <= 300 characters. "
-        "(2) Must include TARGET_FACT verbatim. "
-        "(3) Must include HOOK_TEXT verbatim. "
-        "(4) Must include PROOF_POINT verbatim. "
-        "(5) Must include INTENT (verbatim or a minimal rephrase with same meaning). "
-        "(6) Must include CTA verbatim, and end with CTA. "
-        "(7) If REQUIRED_TOKEN is provided, it must appear verbatim AND not as a standalone fragment. "
-        "(8) Must include an explicit bridge sentence that contains both TARGET_FACT and PROOF_POINT; "
-        "use exactly: 'Seeing {TARGET_FACT}, {PROOF_POINT}.' "
-        "You may keep everything else minimal; do not add extra background (no schools/locations/headlines) beyond PROOF_POINT. "
+        "(2) Mention TARGET_FACT and HOOK_TEXT (exact wording preferred but light rephrasing is allowed). "
+        "(3) Include one concrete detail from PROOF_POINT. "
+        "(4) Include INTENT naturally (exact wording not required). "
+        "(5) Must include CTA verbatim at the very end. "
+        "(6) If REQUIRED_TOKEN is present, include it verbatim once. "
+        "(7) Avoid robotic style: do NOT start every variant with the same template and do NOT mechanically repeat field names. "
+        "(8) Keep tone human, concise, and specific; 1-2 sentences max. "
         "Avoid banlist phrases. "
         "Never refuse or explain constraints; always produce JSON."
     )
@@ -142,7 +140,7 @@ def build_prompt_context(
             lines.append(f"  REQUIRED_TOKEN={required_token}")
         return lines
 
-    bridge_lines: list[str] = ["BRIDGE_PLAN (MUST FOLLOW EXACTLY):"]
+    bridge_lines: list[str] = ["BRIDGE_PLAN (facts to include, no fabrication):"]
     for variant in ["short", "direct", "warm"]:
         bridge_lines.extend(format_bridge_block(variant, bridge_plan.get(variant, {})))
 
@@ -157,10 +155,11 @@ def build_prompt_context(
             "",
             f"BANLIST: {', '.join(banlist)}",
             "",
-            "HARD TEMPLATE (recommended, keep it short):",
-            "Hi {TARGET_NAME}, {HOOK_TEXT}. Seeing {TARGET_FACT}, {PROOF_POINT}. {INTENT}. {CTA}",
-            "If REQUIRED_TOKEN is present, include it inside the first sentence, e.g. '{HOOK_TEXT} ({REQUIRED_TOKEN})'.",
-            "Do not add extra facts about the sender beyond PROOF_POINT.",
+            "STYLE:",
+            "- Keep variants distinct in wording and rhythm.",
+            "- Avoid overusing parentheses and rigid connector phrases.",
+            "- Keep one strong bridge between target fact and sender proof point.",
+            "- Do not add extra sender facts beyond PROOF_POINT.",
             "",
             "OUTPUT_JSON_SCHEMA (shape):",
             "{",

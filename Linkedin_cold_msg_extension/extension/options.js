@@ -1,6 +1,22 @@
+const profileApi = window.LNCProfile || {
+  normalizeProfile: (input) => (input && typeof input === "object" ? input : {}),
+  getEmptyProfile: () => ({
+    headline: "",
+    location: "",
+    schools: [],
+    experiences: [],
+    proof_points: [],
+    focus_areas: [],
+    internship_goal: "",
+    do_not_say: [],
+    tone_preference: "warm"
+  })
+};
+
 async function loadDefaults() {
   const resp = await fetch(chrome.runtime.getURL("default_profile.json"));
-  return resp.json();
+  const raw = await resp.json();
+  return profileApi.normalizeProfile(raw);
 }
 
 function splitLines(value) {
@@ -20,7 +36,13 @@ async function loadProfile() {
   return new Promise(async (resolve) => {
     chrome.storage.local.get(["my_profile"], async (res) => {
       if (res.my_profile) {
-        resolve(res.my_profile);
+        const normalized = profileApi.normalizeProfile(res.my_profile);
+        const changed = JSON.stringify(normalized) !== JSON.stringify(res.my_profile);
+        if (changed) {
+          chrome.storage.local.set({ my_profile: normalized }, () => resolve(normalized));
+        } else {
+          resolve(normalized);
+        }
         return;
       }
       const defaults = await loadDefaults();
@@ -31,27 +53,28 @@ async function loadProfile() {
 
 function populateForm(profile) {
   document.getElementById("headline").value = profile.headline || "";
+  document.getElementById("location").value = profile.location || "";
   document.getElementById("schools").value = (profile.schools || []).join("\n");
   document.getElementById("experiences").value = (profile.experiences || []).join("\n");
-  const proof = profile.proof_points || ["", "", ""];
-  document.getElementById("proof1").value = proof[0] || "";
-  document.getElementById("proof2").value = proof[1] || "";
-  document.getElementById("proof3").value = proof[2] || "";
+  document.getElementById("proof_points").value = (profile.proof_points || []).join("\n");
+  document.getElementById("focus_areas").value = (profile.focus_areas || []).join("\n");
+  document.getElementById("internship_goal").value = profile.internship_goal || "";
+  document.getElementById("do_not_say").value = (profile.do_not_say || []).join("\n");
   document.getElementById("tone").value = profile.tone_preference || "warm";
 }
 
 async function saveProfile() {
-  const profile = {
+  const profile = profileApi.normalizeProfile({
     headline: document.getElementById("headline").value.trim(),
+    location: document.getElementById("location").value.trim(),
     schools: splitLines(document.getElementById("schools").value),
     experiences: splitLines(document.getElementById("experiences").value),
-    proof_points: [
-      document.getElementById("proof1").value.trim(),
-      document.getElementById("proof2").value.trim(),
-      document.getElementById("proof3").value.trim()
-    ],
+    proof_points: splitLines(document.getElementById("proof_points").value),
+    focus_areas: splitLines(document.getElementById("focus_areas").value),
+    internship_goal: document.getElementById("internship_goal").value.trim(),
+    do_not_say: splitLines(document.getElementById("do_not_say").value),
     tone_preference: document.getElementById("tone").value
-  };
+  });
 
   chrome.storage.local.set({ my_profile: profile }, () => {
     setStatus("Saved.");

@@ -1,3 +1,25 @@
+from .text_utils import normalize_key
+
+
+def _contains_normalized(haystack: str, needle: str) -> bool:
+    nh = normalize_key(haystack)
+    nn = normalize_key(needle)
+    if not nn:
+        return True
+    return nn in nh
+
+
+def _has_token_overlap(haystack: str, snippet: str, minimum_hits: int = 3) -> bool:
+    hay_tokens = set(normalize_key(haystack).split())
+    snippet_tokens = [tok for tok in normalize_key(snippet).split() if len(tok) >= 4]
+    if not snippet_tokens:
+        return True
+    unique_tokens = set(snippet_tokens)
+    hits = len([tok for tok in unique_tokens if tok in hay_tokens])
+    threshold = min(minimum_hits, max(1, len(unique_tokens) // 2))
+    return hits >= threshold
+
+
 def validate_variant_text(text: str, plan: dict[str, str], banlist: list[str]) -> list[str]:
     violations: list[str] = []
     if not text:
@@ -13,15 +35,15 @@ def validate_variant_text(text: str, plan: dict[str, str], banlist: list[str]) -
     cta = plan.get("cta", "")
     required_token = plan.get("required_token", "")
 
-    if target_fact and target_fact not in text:
+    if target_fact and not _contains_normalized(text, target_fact):
         violations.append("missing target_fact")
-    if hook_text and hook_text not in text:
+    if hook_text and not _contains_normalized(text, hook_text):
         violations.append("missing hook_text")
-    if proof_point and proof_point not in text:
+    if proof_point and not _has_token_overlap(text, proof_point):
         violations.append("missing proof_point")
-    if cta and cta not in text:
+    if cta and not _contains_normalized(text, cta):
         violations.append("missing CTA")
-    if required_token and required_token not in text:
+    if required_token and not _contains_normalized(text, required_token):
         violations.append("missing required_token")
 
     lowered = text.lower()

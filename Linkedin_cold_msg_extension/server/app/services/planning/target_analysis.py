@@ -4,6 +4,33 @@ from typing import Any
 from ..utils.constants import ROLE_KEYWORD_MIN_LEN
 from ..utils.text_utils import normalize_key, tokenize
 
+SHORT_EMPLOYMENT_TYPES = {
+    "full time",
+    "part time",
+    "contract",
+    "temporary",
+    "freelance",
+    "internship",
+    "apprenticeship",
+    "self employed",
+    "seasonal",
+}
+
+
+def is_likely_metadata_company(value: str) -> bool:
+    normalized = normalize_key(value)
+    if not normalized:
+        return True
+    if normalized in SHORT_EMPLOYMENT_TYPES:
+        return True
+    if re.search(r"\b\d+\s*(yrs?|years?|mos?|months?)\b", normalized):
+        return True
+    if re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b", normalized):
+        return True
+    if "present" in normalized and re.search(r"\b\d{4}\b", normalized):
+        return True
+    return False
+
 
 def build_target_text(target_profile: dict[str, Any]) -> str:
     parts: list[str] = []
@@ -58,10 +85,12 @@ def derive_hooks(target_profile: dict[str, Any]) -> list[str]:
     for exp in target_profile.get("top_experiences") or []:
         title = exp.get("title", "")
         company = exp.get("company", "")
-        if title and company:
+        if title and company and not is_likely_metadata_company(company):
             hooks.append(f"{title} at {company}")
-        elif company:
+        elif company and not is_likely_metadata_company(company):
             hooks.append(f"{company} experience")
+        elif title:
+            hooks.append(title)
     for edu in target_profile.get("education") or []:
         school = edu.get("school", "")
         if school:
@@ -76,11 +105,11 @@ def classify_target(target_profile: dict[str, Any]) -> set[str]:
     text = build_target_text(target_profile).lower()
     tags: set[str] = set()
     if re.search(
-        r"(data|analytics|ml|machine learning|sql|python|bi|business intelligence|stats|statistic|quant|ai)",
+        r"(\bdata\b|\banalytics\b|\bml\b|\bmachine learning\b|\bsql\b|\bpython\b|\bbi\b|business intelligence|\bstats?\b|\bstatistic\w*\b|\bquant\w*\b|\bai\b)",
         text,
     ):
         tags.add("analytics")
-    if re.search(r"(product|pm|product management|growth|roadmap)", text):
+    if re.search(r"(\bproduct\b|\bpm\b|product management|\bgrowth\b|\broadmap\b)", text):
         tags.add("product")
     if re.search(
         r"(computer vision|vision|opencv|yolo|camera|radar|perception|imaging)",
@@ -158,10 +187,11 @@ def extract_headline_keyword(headline: str) -> str:
 
 def extract_company_from_fact(target_fact: str) -> str:
     if " at " in target_fact:
-        return target_fact.split(" at ", 1)[1].strip()
+        company = target_fact.split(" at ", 1)[1].strip()
+        return "" if is_likely_metadata_company(company) else company
     if target_fact.endswith(" alum"):
         return target_fact[: -len(" alum")].strip()
-    return target_fact
+    return "" if is_likely_metadata_company(target_fact) else target_fact
 
 
 def is_domain_fact(token: str) -> bool:

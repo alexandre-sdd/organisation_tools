@@ -19,7 +19,12 @@ def tokens_without_stopwords(text: str, stopwords: set[str]) -> set[str]:
     return {tok for tok in normalize_key(text).split() if tok and tok not in stopwords}
 
 
-def match_entity(a: str, b: str, stopwords: set[str]) -> bool:
+def match_entity(
+    a: str,
+    b: str,
+    stopwords: set[str],
+    min_token_overlap: int = 1,
+) -> bool:
     na = normalize_key(a)
     nb = normalize_key(b)
     if not na or not nb:
@@ -28,7 +33,9 @@ def match_entity(a: str, b: str, stopwords: set[str]) -> bool:
         return True
     tokens_a = tokens_without_stopwords(a, stopwords)
     tokens_b = tokens_without_stopwords(b, stopwords)
-    return len(tokens_a.intersection(tokens_b)) >= 1
+    overlap = len(tokens_a.intersection(tokens_b))
+    required = max(1, min_token_overlap)
+    return overlap >= required
 
 
 def is_nyc(location: str) -> bool:

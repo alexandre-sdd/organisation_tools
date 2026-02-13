@@ -1,7 +1,7 @@
 from typing import Any
 
 from ..utils.text_utils import compact_role_title, is_nyc, match_entity, normalize_key
-from .target_analysis import score_hook
+from .target_analysis import is_likely_metadata_company, score_hook
 
 
 def build_anchor_candidates(
@@ -22,7 +22,7 @@ def build_anchor_candidates(
 
     for my_school in my_schools:
         for target_school in target_schools:
-            if match_entity(my_school, target_school, school_stop):
+            if match_entity(my_school, target_school, school_stop, min_token_overlap=2):
                 base = 12
                 text = f"{target_school} alum"
                 if is_nyc(my_location) and is_nyc(target_location):
@@ -41,23 +41,33 @@ def build_anchor_candidates(
     for exp in target_profile.get("top_experiences") or []:
         company = exp.get("company", "")
         title = compact_role_title(exp.get("title", ""))
-        for my_exp in my_experiences:
-            if match_entity(my_exp, company, company_stop):
-                anchors.append(
-                    {
-                        "type": "company",
-                        "text": f"Both have experience at {company}",
-                        "score": 9,
-                        "evidence": f"{my_exp} + {company}",
-                    }
-                )
-        if company and title:
+        if company and not is_likely_metadata_company(company):
+            for my_exp in my_experiences:
+                if match_entity(my_exp, company, company_stop):
+                    anchors.append(
+                        {
+                            "type": "company",
+                            "text": f"Both have experience at {company}",
+                            "score": 9,
+                            "evidence": f"{my_exp} + {company}",
+                        }
+                    )
+        if company and title and not is_likely_metadata_company(company):
             anchors.append(
                 {
                     "type": "role",
                     "text": f"{title} at {company}",
                     "score": 6,
                     "evidence": f"{title} + {company}",
+                }
+            )
+        elif title:
+            anchors.append(
+                {
+                    "type": "role",
+                    "text": title,
+                    "score": 5,
+                    "evidence": f"{title}",
                 }
             )
 
