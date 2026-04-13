@@ -108,6 +108,55 @@
     return { name, headline, location };
   }
 
+  function collectNamesFromStructuredValue(value, out) {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      for (const item of value) collectNamesFromStructuredValue(item, out);
+      return;
+    }
+    if (typeof value === "string") {
+      const text = cleanText(value);
+      if (text) out.push(text);
+      return;
+    }
+    if (typeof value !== "object") return;
+
+    const name = cleanText(value.name || "");
+    if (name) out.push(name);
+  }
+
+  function collectAlumniSchools(node, out) {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) collectAlumniSchools(item, out);
+      return;
+    }
+    if (typeof node !== "object") return;
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "alumniOf") {
+        collectNamesFromStructuredValue(value, out);
+      }
+      collectAlumniSchools(value, out);
+    }
+  }
+
+  function extractEducationFromJsonLd() {
+    const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+    const schools = [];
+    for (const script of scripts) {
+      const raw = (script.textContent || "").trim();
+      if (!raw) continue;
+      try {
+        const data = JSON.parse(raw);
+        collectAlumniSchools(data, schools);
+      } catch (_) {
+        // Ignore malformed JSON-LD blocks.
+      }
+    }
+    return unique(schools.map((s) => cleanText(s)).filter(Boolean));
+  }
+
   function findTopCardRoot() {
     const main = document.querySelector("main") || document.body;
     const h1 = main.querySelector("h1");
@@ -285,28 +334,67 @@
       document.querySelector("section#education") ||
       document.querySelector("section[aria-label*='Education']") ||
       findSectionByHeading("education");
-    if (!section) return [];
 
-    const item = section.querySelector(
-      "li.pvs-list__item--line-separated, li.pvs-list__item, li.artdeco-list__item"
-    );
-    if (!item) return [];
+    const items = section
+      ? Array.from(
+          section.querySelectorAll(
+            "li.pvs-list__item--line-separated, li.pvs-list__item, li.artdeco-list__item"
+          )
+        )
+      : [];
 
-    let school = queryText(
-      [
-        ".t-bold span[aria-hidden='true']",
-        ".mr1.t-bold span[aria-hidden='true']",
-        ".t-16.t-bold span[aria-hidden='true']",
-        "span[aria-hidden='true']"
-      ],
-      item
-    );
-    if (!school) {
-      const lines = collectVisibleLines(item);
-      school = lines[0] || "";
+    const seen = new Set();
+    const schools = [];
+
+    for (const item of items) {
+      let school = queryText(
+        [
+          ".t-bold span[aria-hidden='true']",
+          ".mr1.t-bold span[aria-hidden='true']",
+          ".t-16.t-bold span[aria-hidden='true']",
+          "span[aria-hidden='true']"
+        ],
+        item
+      );
+      if (!school) {
+        const lines = collectVisibleLines(item);
+        school = lines[0] || "";
+      }
+      const key = normalizeKey(school);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      schools.push({ school });
+      if (schools.length >= 3) break;
     }
 
-    return school ? [{ school }] : [];
+    if (section && schools.length < 3) {
+      const linkSchools = Array.from(
+        section.querySelectorAll(
+          "a[href*='/school/'] span[aria-hidden='true'], a[href*='/school/']"
+        )
+      )
+        .map((el) => cleanText(textFrom(el)))
+        .filter(Boolean);
+      for (const school of unique(linkSchools)) {
+        const key = normalizeKey(school);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        schools.push({ school });
+        if (schools.length >= 3) break;
+      }
+    }
+
+    if (schools.length < 3) {
+      for (const school of extractEducationFromJsonLd()) {
+        const key = normalizeKey(school);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        schools.push({ school });
+        if (schools.length >= 3) break;
+      }
+    }
+
+    return schools;
   }
 
   function extractProfile() {

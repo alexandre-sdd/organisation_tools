@@ -27,6 +27,23 @@ def _clean_school_name(value: str) -> str:
     return text or value.strip()
 
 
+def _infer_my_school_hints(my_profile: dict[str, Any]) -> list[str]:
+    raw_text = " ".join(
+        [
+            my_profile.get("headline", ""),
+            " ".join(my_profile.get("proof_points") or []),
+            " ".join(my_profile.get("experiences") or []),
+        ]
+    )
+    normalized = normalize_key(raw_text)
+    hints: list[str] = []
+
+    if re.search(r"\bcentrale\s*supelec\b|\bcentralesupelec\b|\bcentralesup\b", normalized):
+        hints.append("CentraleSupélec")
+
+    return hints
+
+
 def build_anchor_candidates(
     my_profile: dict[str, Any],
     target_profile: dict[str, Any],
@@ -39,7 +56,9 @@ def build_anchor_candidates(
     school_stop = {"university", "college", "school", "institute", "faculty"}
     company_stop = {"group", "inc", "corp", "ltd", "llc", "company", "technologies", "tech"}
 
-    my_schools = my_profile.get("schools") or []
+    my_schools = [school for school in (my_profile.get("schools") or []) if school]
+    if not my_schools:
+        my_schools = _infer_my_school_hints(my_profile)
     target_schools = [edu.get("school", "") for edu in target_profile.get("education") or []]
     target_headline = target_profile.get("headline", "")
     my_location = my_profile.get("location", "")

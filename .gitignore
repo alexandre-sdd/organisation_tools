@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+.DS_Store
 
 # Python
 __pycache__/
@@ -8,4 +9,4 @@ __pycache__/
 .venv/
 
 # Local logs
-Linkedin_cold_msg_extension/logs/
+Linkedin_cold_msg_extenstion/logs/

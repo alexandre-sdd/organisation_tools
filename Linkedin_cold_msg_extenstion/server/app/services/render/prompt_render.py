@@ -58,7 +58,7 @@ def build_prompt_context(
         "location": target_profile.get("location", ""),
         "about": target_profile.get("about", ""),
         "top_experiences": (target_profile.get("top_experiences") or [])[:2],
-        "education": (target_profile.get("education") or [])[:1],
+        "education": (target_profile.get("education") or [])[:3],
     }
 
     derived = derive_hooks(compact_target_profile)

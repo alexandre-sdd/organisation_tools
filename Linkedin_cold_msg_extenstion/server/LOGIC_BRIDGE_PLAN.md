@@ -2,7 +2,7 @@
 
 This document explains the **new deterministic “bridge plan” prompting logic** and the **always-on traces** written to NDJSON logs.
 
-It does **not** replace `Linkedin_cold_msg_extension/server/LOGIC.md`; it complements it.
+It does **not** replace `Linkedin_cold_msg_extenstion/server/LOGIC.md`; it complements it.
 
 ## What Changed (Conceptually)
 
@@ -18,10 +18,10 @@ This is meant to reduce generic outputs by removing model degrees of freedom.
 
 ## Where The Logic Lives
 
-- Prompt + planning: `Linkedin_cold_msg_extension/server/app/services/prompting.py`
-- Endpoint route: `Linkedin_cold_msg_extension/server/app/api/routes/generate.py`
-- Orchestration + logging: `Linkedin_cold_msg_extension/server/app/services/generation_service.py`
-- NDJSON append helper: `Linkedin_cold_msg_extension/server/app/logging_utils.py`
+- Prompt + planning: `Linkedin_cold_msg_extenstion/server/app/services/prompting.py`
+- Endpoint route: `Linkedin_cold_msg_extenstion/server/app/api/routes/generate.py`
+- Orchestration + logging: `Linkedin_cold_msg_extenstion/server/app/services/generation_service.py`
+- NDJSON append helper: `Linkedin_cold_msg_extenstion/server/app/logging_utils.py`
 
 ## Bridge Plan: Deterministic Planning
 
@@ -136,7 +136,7 @@ The generation service now retries once with a lower temperature when violations
 
 Each `/generate` call appends a record to:
 
-`Linkedin_cold_msg_extension/logs/requests.ndjson`
+`Linkedin_cold_msg_extenstion/logs/requests.ndjson`
 
 Each line includes:
 

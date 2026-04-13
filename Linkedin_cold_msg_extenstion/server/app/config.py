@@ -6,7 +6,7 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+    load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=True)
 except Exception:
     # If python-dotenv isn't installed (or file is missing), fall back to process env.
     pass
